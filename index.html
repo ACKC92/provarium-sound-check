@@ -18,8 +18,11 @@ header > button { flex: none; }
 p { margin: 0; }
 .mute { color: var(--mute); font-size: 15px; }
 label { display: grid; gap: 6px; font-weight: 600; font-size: 15px; }
-input, select { font: inherit; font-size: 17px; font-weight: 400; min-height: 46px; padding: 0 40px 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--fg); width: 100%; }
-select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; }
+input, select { font: inherit; font-size: 17px; font-weight: 400; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--fg); width: 100%; }
+/* (the example and the longest choice kept on one line: made smaller only as much as the device's own font needs,
+   measured by fitWords() below; these until then) */
+input::placeholder { font-size: var(--ph, min(17px, calc(5.1vw - 3.5px))); }
+select { padding-right: 30px; font-size: var(--fs, min(17px, calc(5.6vw - 4.6px))); appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; }
 button { font: inherit; font-weight: 600; min-height: 48px; padding: 0 20px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--btn-fg); cursor: pointer; white-space: nowrap; }
 button.quiet { background: transparent; color: var(--accent); }
@@ -41,7 +44,7 @@ pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8p
   <p data-t="intro"></p>
   <label><span data-t="model"></span><input id="model" type="text" autocomplete="off" data-ph="modelPh"></label>
   <label><span data-t="out"></span>
-    <select id="route"><option value="speaker" data-t="speaker"></option><option value="wired" data-t="wired"></option><option value="bluetooth" data-t="bluetooth"></option></select>
+    <select id="route"><option value="speaker" data-t="speaker"></option><option value="external" data-t="external"></option><option value="wired" data-t="wired"></option><option value="bluetooth" data-t="bluetooth"></option></select>
   </label>
   <div class="row"><button id="go" type="button" data-t="start"></button></div>
   <div id="status" aria-live="polite" hidden></div>
@@ -63,35 +66,35 @@ pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8p
 const WORDS = {
   tr: {
     title: 'Ses zamanlaması testi',
-    intro: 'Bu sayfa, Provarium’un oynatıcısında metronomla kaydın birbirinden kayması sorununu incelemek için hazırlanmıştır. Test, Provarium’un kayıtları çaldığı şekilde kısa sesler çalar ve her sesin gerçekte ne zaman duyulduğunu ölçer. Başlamadan önce telefonunuzun sesini biraz açın ve sessiz modda olmadığından emin olun. Test yaklaşık 45 saniye sürer.',
-    model: 'Telefonunuzun modeli', modelPh: 'ör. iPhone 13',
-    out: 'Sesi nereden dinliyorsunuz?', speaker: 'Telefonun hoparlöründen', wired: 'Kablolu kulaklıktan', bluetooth: 'Bluetooth kulaklıktan (AirPods vb.)',
+    intro: 'Bu sayfa, Provarium’un oynatıcısında metronomla kaydın birbirinden kayması sorununu incelemek için hazırlanmıştır. Test, Provarium’un kayıtları çaldığı şekilde kısa sesler çalar ve her sesin gerçekte ne zaman duyulduğunu ölçer. Başlamadan önce cihazınızın sesini biraz açın. Telefon kullanıyorsanız, telefonunuzun sessiz modda olmadığından da emin olun. Test yaklaşık 1 dakika sürer.',
+    model: 'Cihazınızın modeli', modelPh: 'ör. iPhone 13, Galaxy S23, MacBook Air',
+    out: 'Sesi nereden dinliyorsunuz?', speaker: 'Cihazın hoparlöründen', external: 'Harici hoparlörden', wired: 'Kablolu kulaklıktan', bluetooth: 'Bluetooth kulaklıktan (AirPods vb.)',
     start: 'Testi başlat', again: 'Testi tekrarla',
     making: 'Test sesleri hazırlanıyor', running: 'Test sürüyor. Bu sırada sayfadan ayrılmayın.',
     done: 'Test tamamlandı. Sonuçları kopyalayıp bu sayfayı size gönderen kişiye iletin.',
     stopped: 'Test durdu: ',
     copy: 'Sonuçları kopyala', share: 'Paylaş', copied: 'Sonuçlar kopyalandı.',
-    selected: 'Sonuçlar seçildi. Telefonunuzun Kopyala seçeneğiyle kopyalayabilirsiniz.',
+    selected: 'Sonuçlar seçildi. Cihazınızın Kopyala seçeneğiyle kopyalayabilirsiniz.',
     bgBtn: 'Ek testi başlat',
-    bgNote: 'Ek test, sayfadan ayrıldığınızda sesin ve metronomun ne olduğunu ölçer. Sizden istendiğinde başka bir uygulamaya geçin ve yaklaşık 10 saniye sonra bu sayfaya geri dönün.',
-    bgNow: 'Şimdi başka bir uygulamaya geçin. Yaklaşık 10 saniye sonra bu sayfaya geri dönün.',
+    bgNote: 'Ek test, sayfadan ayrıldığınızda sesin ve metronomun ne olduğunu ölçer. Sizden istendiğinde başka bir uygulamaya ya da sekmeye geçin ve yaklaşık 10 saniye sonra bu sayfaya geri dönün.',
+    bgNow: 'Şimdi başka bir uygulamaya ya da sekmeye geçin. Yaklaşık 10 saniye sonra bu sayfaya geri dönün.',
     privacy: 'Bu sayfa hiçbir bilgiyi kendiliğinden bir yere göndermez. Sonuçlar yalnızca siz kopyalayıp paylaştığınızda iletilir.',
     other: 'English'
   },
   en: {
     title: 'Sound timing check',
-    intro: 'This page looks into the Metronom and the recording drifting apart in Provarium’s player. It plays short test sounds the way Provarium plays recordings and measures when each one is really heard. Before you start, turn the sound up a little and make sure the phone isn’t on silent. It takes about 45 seconds.',
-    model: 'Your phone’s model', modelPh: 'e.g. iPhone 13',
-    out: 'Where are you listening?', speaker: 'The phone’s speaker', wired: 'Wired headphones', bluetooth: 'Bluetooth headphones (AirPods etc.)',
+    intro: 'This page looks into the Metronom and the recording drifting apart in Provarium’s player. It plays short test sounds the way Provarium plays recordings and measures when each one is really heard. Before you start, turn the sound up a little, and if you’re on a phone, make sure it isn’t on silent. It takes about a minute.',
+    model: 'Your device’s model', modelPh: 'e.g. iPhone 13, Galaxy S23, MacBook Air',
+    out: 'Where are you listening?', speaker: 'The device’s speaker', external: 'External speakers', wired: 'Wired headphones', bluetooth: 'Bluetooth headphones (AirPods etc.)',
     start: 'Start the test', again: 'Run it again',
     making: 'Making the test sounds', running: 'Testing. Please stay on this page meanwhile.',
     done: 'Done. Copy the results and send them to whoever sent you this page.',
     stopped: 'The test stopped: ',
     copy: 'Copy the results', share: 'Share', copied: 'The results are copied.',
-    selected: 'The results are selected. Copy them with your phone’s Copy.',
+    selected: 'The results are selected. Copy them with your device’s Copy.',
     bgBtn: 'Start the extra test',
-    bgNote: 'The extra test measures what happens to the sound and the metronome when you leave the page. When asked, switch to another app and come back to this page after about 10 seconds.',
-    bgNow: 'Now switch to another app. Come back to this page after about 10 seconds.',
+    bgNote: 'The extra test measures what happens to the sound and the metronome when you leave the page. When asked, switch to another app or tab and come back to this page after about 10 seconds.',
+    bgNow: 'Now switch to another app or tab. Come back to this page after about 10 seconds.',
     privacy: 'This page sends nothing anywhere by itself. The results go only where you copy and share them.',
     other: 'Türkçe'
   }
@@ -106,7 +109,24 @@ function words() {
   for (const el of document.querySelectorAll('[data-ph]')) el.placeholder = W(el.dataset.ph);
   $('lang').textContent = W('other');
   if (ran) $('go').textContent = W('again');
+  fitWords();
 }
+// The example and the longest choice on one line in this device's own font: smaller only where they wouldn't fit.
+function fitWords() {
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-weight:400;font-size:17px;left:0;top:0';
+  document.body.appendChild(probe);
+  const to = (el, texts, v) => {
+    const cs = getComputedStyle(el), room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 2;
+    probe.style.fontFamily = cs.fontFamily;
+    let w = 0; for (const t of texts) { probe.textContent = t; w = Math.max(w, probe.getBoundingClientRect().width); }
+    if (w > 0 && room > 0) el.style.setProperty(v, Math.min(17, 17 * room / w).toFixed(2) + 'px');
+  };
+  to($('route'), [...$('route').options].map(o => o.textContent), '--fs');
+  to($('model'), [$('model').placeholder], '--ph');
+  probe.remove();
+}
+addEventListener('resize', () => fitWords());
 const $ = id => document.getElementById(id);
 let ran = false;
 $('lang').onclick = () => { lang = lang === 'tr' ? 'en' : 'tr'; try { localStorage.setItem('sc-lang', lang); } catch (e) { /* none */ } words(); };
@@ -212,12 +232,13 @@ function longestGap(low, c0, c1) { let best = 0, run = 0; for (const x of low) {
 
 // Four parts through the sound's graph, as Ayrık Partiler, MuseScore and MusicXML play: how late each is heard after
 // its own clock, how far apart they are, gaps; one put back in step while playing, as Provarium keeps parts together;
-// then at speed 0.75.
-async function routed(label, els, f0, f1) {
+// then at speed 0.75. Quiet: the same at speed 1 with nothing let out to the speaker (if it measures the same, a device
+// can be measured without being heard).
+async function routed(label, els, f0, f1, quiet) {
   if (!els) { lines.push(label + ': could not be made here'); return; }
   const N = els.length;
   await loaded(els, 8000);
-  const cap = capture(N + 1), out = ctx.createGain(); out.gain.value = 0.35; out.connect(ctx.destination);
+  const cap = capture(N + 1), out = ctx.createGain(); out.gain.value = quiet ? 0 : 0.35; out.connect(ctx.destination);
   els.forEach((a, k) => { const s = ctx.createMediaElementSource(a); s.connect(out); s.connect(cap.merger, 0, k); });
   const cal = [], c0 = ctx.currentTime + 0.25;
   for (let j = 0; j < 6; j++) { const t = c0 + j * 0.37, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 2000; g.gain.setValueAtTime(0, 0); g.gain.setValueAtTime(0.8, t); g.gain.linearRampToValueAtTime(0, t + 0.006); o.connect(g); g.connect(cap.merger, 0, N); o.start(t); o.stop(t + 0.02); cal.push(t); }
@@ -228,26 +249,29 @@ async function routed(label, els, f0, f1) {
   const callC = ctx.currentTime;
   const res = await Promise.all(els.map(a => a.play().then(() => 'ok', e => (e && e.name) || 'refused')));
   const playedC = ctx.currentTime;
-  await wait(4200); prog(f0 + (f1 - f0) * 0.3);
-  const seekC = ctx.currentTime; els[1].currentTime = els[0].currentTime;
-  await wait(3200); prog(f0 + (f1 - f0) * 0.55);
-  const rateC = ctx.currentTime; els.forEach(a => { a.playbackRate = 0.75; });
-  await wait(6500); prog(f1);
+  await wait(quiet ? 5500 : 4200); prog(f0 + (f1 - f0) * (quiet ? 0.9 : 0.3));
+  const seekC = ctx.currentTime;
+  if (!quiet) els[1].currentTime = els[0].currentTime;
+  if (!quiet) { await wait(3200); prog(f0 + (f1 - f0) * 0.55); }
+  const rateC = ctx.currentTime;
+  if (!quiet) { els.forEach(a => { a.playbackRate = 0.75; }); await wait(6500); }
+  prog(f1);
   const endC = ctx.currentTime;
   els.forEach(a => a.pause()); smp.stop(); await wait(300);
   cap.sp.disconnect(); out.disconnect();
   const O = isFinite(own) ? own : 0, on = cap.st.on.map(a => a.map(t => t - O)), low = cap.st.low.map(a => a.map(x => [x[0] - O, x[1], x[2]]));
   const first = on[0][0], startLate = first !== undefined ? first - callC - CLICKS[0] : NaN;
   const r1 = els.map((a, k) => { const at = fit(smp.pts, k, playedC + 0.4, seekC - 0.05); return at ? lateness(on[k], at, playedC + 0.4, seekC - 0.05) : null; });
-  const after = (() => { const at = fit(smp.pts, 1, seekC + 0.8, rateC - 0.05); return at ? lateness(on[1], at, seekC + 0.8, rateC - 0.05) : null; })();
-  const r2 = els.map((a, k) => { const at = fit(smp.pts, k, rateC + 0.8, endC - 0.1); return at ? lateness(on[k], at, rateC + 0.8, endC - 0.1) : null; });
+  const after = quiet ? null : (() => { const at = fit(smp.pts, 1, seekC + 0.8, rateC - 0.05); return at ? lateness(on[1], at, seekC + 0.8, rateC - 0.05) : null; })();
+  const r2 = quiet ? [] : els.map((a, k) => { const at = fit(smp.pts, k, rateC + 0.8, endC - 0.1); return at ? lateness(on[k], at, rateC + 0.8, endC - 0.1) : null; });
   const apart = []; for (const t0 of on[0]) { if (t0 > seekC - 0.05) break; const same = on.slice(1, N).map(a => a.find(t => Math.abs(t - t0) < 0.25)); if (same.every(x => x !== undefined)) { const all = [t0].concat(same); apart.push(Math.max(...all) - Math.min(...all)); } }
   const show = r => (r ? ms(r.late) + ' (±' + Math.round(r.spread * 1000) + ', ' + r.got + '/' + r.of + ')' : 'not measured');
-  lines.push(label + ' through the sound’s graph (as Ayrık Partiler, MuseScore, MusicXML):');
+  lines.push(label + (quiet ? ' again with the sound off (nothing to the speaker):' : ' through the sound’s graph (as Ayrık Partiler, MuseScore, MusicXML):'));
   if (res.some(x => x !== 'ok')) lines.push('  play: ' + res.join(', '));
   lines.push('  ▶ to the first sound: ' + ms(startLate) + ' later than it should be');
   lines.push('  heard after the page’s clock, at speed 1: ' + r1.map(show).join(' · '));
   lines.push('  the 4 parts apart: ' + ms(med(apart)) + ' (most ' + ms(apart.length ? Math.max(...apart) : NaN) + ')');
+  if (quiet) { lines.push('  gaps at speed 1: ' + ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN)); return; }
   lines.push('  gaps at speed 1: ' + ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN) + ' · one part re-synced: gap ' + ms(longestGap(low[1], seekC, seekC + 1)) + ', then ' + show(after));
   lines.push('  at speed 0.75: ' + r2.map(show).join(' · ') + ' · gaps ' + ms(gaps(low[0], rateC + 0.3, endC)));
 }
@@ -272,21 +296,22 @@ $('go').onclick = () => {
   urls.forEach(u => URL.revokeObjectURL(u)); urls.length = 0;
   const d = pcm(), wv = URL.createObjectURL(wavBlob(d)); urls.push(wv);
   let mp = null; try { const b = mp3Blob(d); if (b) { mp = URL.createObjectURL(b); urls.push(mp); } } catch (e) { mp = null; }
-  const solo = element(wv), wavEls = [0, 1, 2, 3].map(() => element(wv)), mp3Els = mp ? [0, 1, 2, 3].map(() => element(mp)) : null;
-  unlock([solo].concat(wavEls, mp3Els || []));
-  run(resumed, solo, wavEls, mp3Els);
+  const solo = element(wv), wavEls = [0, 1, 2, 3].map(() => element(wv)), mp3Els = mp ? [0, 1, 2, 3].map(() => element(mp)) : null, quietEls = [0, 1, 2, 3].map(() => element(wv));
+  unlock([solo].concat(wavEls, mp3Els || [], quietEls));
+  run(resumed, solo, wavEls, mp3Els, quietEls);
 };
-async function run(resumed, solo, wavEls, mp3Els) {
+async function run(resumed, solo, wavEls, mp3Els, quietEls) {
   try {
     await resumed;
     say(W('running'));
     lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC');
-    lines.push('Phone: ' + ($('model').value.trim() || '(not given)') + ' · listening on: ' + $('route').value);
+    lines.push('Device: ' + ($('model').value.trim() || '(not given)') + ' · listening on: ' + $('route').value);
     lines.push('Browser: ' + navigator.userAgent);
     lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state);
-    await plain('Plain', solo); prog(0.06);
-    await routed('WAV', wavEls, 0.06, 0.5);
-    await routed('MP3', mp3Els, 0.5, 0.97);
+    await plain('Plain', solo); prog(0.05);
+    await routed('WAV', wavEls, 0.05, 0.42);
+    await routed('MP3', mp3Els, 0.42, 0.8);
+    await routed('WAV', quietEls, 0.8, 0.98, true);
     prog(1); say(W('done'));
   } catch (e) { lines.push('Stopped: ' + (e && e.message || e)); say(W('stopped') + (e && e.message || e), true); }
   ran = true;
@@ -324,7 +349,7 @@ async function away(url, a, cap, g, played) {
   if (!st.backAt) lines.push('Out of sight: the page was never left');
   else {
     const sec = (st.backAt - st.hidAt) / 1000, heard = (st.blocksBack - st.blocksAt) * 256 / ctx.sampleRate;
-    lines.push('Out of sight for ' + sec.toFixed(1) + ' s: timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–') + ' · recording ' + (st.paused ? 'paused by the phone' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
+    lines.push('Out of sight for ' + sec.toFixed(1) + ' s: timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–') + ' · recording ' + (st.paused ? 'paused by the device' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
   }
   $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share;
   $('bg').disabled = false; say(W('done'));

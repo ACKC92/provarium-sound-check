@@ -1,6 +1,6 @@
 # Provarium sound timing check
 
-A one-page test for [Provarium](https://provarium.net)'s player. It plays short test sounds the way Provarium plays rehearsal recordings and measures, on the phone itself, when each sound is really heard. It was made to look into the metronome and the recording drifting apart on iPhones.
+A one-page test for [Provarium](https://provarium.net)'s player. It plays short test sounds the way Provarium plays rehearsal recordings and measures, on the device itself, when each sound is really heard. It was made to look into the metronome and the recording drifting apart, first reported on iPhones. It runs on any phone, tablet or computer with a browser.
 
 **Open it:** https://ackc92.github.io/provarium-sound-check/
 
@@ -12,10 +12,11 @@ A one-page test for [Provarium](https://provarium.net)'s player. It plays short 
   - gaps in the sound,
   - what happens when one is put back in step while playing,
   - the same at speed 0.75.
-- The extra test: what the timers, the screen and the sound do while another app is in front.
+- The same at speed 1 once more with the sound off: if it measures the same, a device can be measured without being heard.
+- The extra test: what the timers, the screen and the sound do while another app or tab is in front.
 
 ## Privacy
-Nothing is sent anywhere. The page has no analytics and makes no network requests after it loads. The results stay on the screen until the person taps Copy or Share. They hold the browser's own description (its version and the phone's system version), the model and headphones the person types or picks, and the timings.
+Nothing is sent anywhere. The page has no analytics and makes no network requests after it loads. The results stay on the screen until the person taps Copy or Share. They hold the browser's own description (its version and the device's system version), the device's model and what it's heard through, as the person types or picks them, and the timings.
 
 ## Files
 - `index.html`: the page.
