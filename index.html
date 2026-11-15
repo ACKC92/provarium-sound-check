@@ -30,6 +30,9 @@ button.lang { min-height: 40px; padding: 0 12px; font-size: 15px; }
 button:disabled { opacity: .45; cursor: default; }
 #status { font-weight: 600; min-height: 1.5em; }
 #status.warn { color: var(--warn); }
+.extra { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+#bgstatus { font-weight: 600; }
+#bgstatus.now { padding: 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--field); }
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); white-space: pre-wrap; word-break: break-word; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; -webkit-user-select: text; user-select: text; }
@@ -54,8 +57,11 @@ pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8p
     <button id="copy" type="button" data-t="copy" hidden></button>
     <button id="share" type="button" class="quiet" data-t="share" hidden></button>
   </div>
-  <p id="bgnote" class="mute" data-t="bgNote" hidden></p>
-  <div class="row"><button id="bg" type="button" class="quiet" data-t="bgBtn" hidden></button></div>
+  <section id="bgbox" class="extra" hidden>
+    <p class="mute" data-t="bgNote"></p>
+    <div class="row"><button id="bg" type="button" class="quiet" data-t="bgBtn"></button></div>
+    <div id="bgstatus" aria-live="polite" hidden></div>
+  </section>
   <p class="mute" data-t="privacy"></p>
 </main>
 <script src="lame.min.js"></script>
@@ -67,7 +73,7 @@ const WORDS = {
   tr: {
     title: 'Ses zamanlaması testi',
     intro: 'Bu sayfa, Provarium’un oynatıcısında metronomla kaydın birbirinden kayması sorununu incelemek için hazırlanmıştır. Test, Provarium’un kayıtları çaldığı şekilde kısa sesler çalar ve her sesin gerçekte ne zaman duyulduğunu ölçer. Başlamadan önce cihazınızın sesini biraz açın. Telefon kullanıyorsanız, telefonunuzun sessiz modda olmadığından da emin olun. Test yaklaşık 1 dakika sürer.',
-    model: 'Cihazınızın modeli', modelPh: 'ör. iPhone 13, Galaxy S23, MacBook Air',
+    model: 'Cihazınızın modeli', modelPh: 'ör. iPhone 13, iPad Air, Galaxy S23, Windows bilgisayar',
     out: 'Sesi nereden dinliyorsunuz?', speaker: 'Cihazın hoparlöründen', external: 'Harici hoparlörden', wired: 'Kablolu kulaklıktan', bluetooth: 'Bluetooth kulaklıktan (AirPods vb.)',
     start: 'Testi başlat', again: 'Testi tekrarla',
     making: 'Test sesleri hazırlanıyor', running: 'Test sürüyor. Bu sırada sayfadan ayrılmayın.',
@@ -76,15 +82,18 @@ const WORDS = {
     copy: 'Sonuçları kopyala', share: 'Paylaş', copied: 'Sonuçlar kopyalandı.',
     selected: 'Sonuçlar seçildi. Cihazınızın Kopyala seçeneğiyle kopyalayabilirsiniz.',
     bgBtn: 'Ek testi başlat',
-    bgNote: 'Ek test, sayfadan ayrıldığınızda sesin ve metronomun ne olduğunu ölçer. Sizden istendiğinde başka bir uygulamaya ya da sekmeye geçin ve yaklaşık 10 saniye sonra bu sayfaya geri dönün.',
-    bgNow: 'Şimdi başka bir uygulamaya ya da sekmeye geçin. Yaklaşık 10 saniye sonra bu sayfaya geri dönün.',
+    bgNote: 'Ek test, sayfadan ayrıldığınızda sesin ve metronomun ne olduğunu ölçer. Ek testi başlattığınızda bir uyarı sesi duyacaksınız. Bu sesi duyunca başka bir uygulamaya ya da sekmeye geçin, aynı sesi yeniden duyunca da bu sayfaya geri dönün.',
+    bgNow: 'Şimdi başka bir uygulamaya ya da sekmeye geçin. Uyarı sesini yeniden duyunca bu sayfaya geri dönün. Sesi duymazsanız yaklaşık 10 saniye sonra geri dönün.',
+    bgDone: 'Ek test tamamlandı. Sonucu yukarıdaki sonuçlara eklendi.',
+    bgShort: 'Çok erken döndünüz. Ek testi yeniden başlatın, bu kez yaklaşık 10 saniye sonra geri dönün.',
+    bgNever: 'Sayfadan ayrılmadığınız için ek test yapılamadı. Ek testi yeniden başlatabilirsiniz.',
     privacy: 'Bu sayfa hiçbir bilgiyi kendiliğinden bir yere göndermez. Sonuçlar yalnızca siz kopyalayıp paylaştığınızda iletilir.',
     other: 'English'
   },
   en: {
     title: 'Sound timing check',
     intro: 'This page looks into the Metronom and the recording drifting apart in Provarium’s player. It plays short test sounds the way Provarium plays recordings and measures when each one is really heard. Before you start, turn the sound up a little, and if you’re on a phone, make sure it isn’t on silent. It takes about a minute.',
-    model: 'Your device’s model', modelPh: 'e.g. iPhone 13, Galaxy S23, MacBook Air',
+    model: 'Your device’s model', modelPh: 'e.g. iPhone 13, iPad Air, Galaxy S23, Windows PC',
     out: 'Where are you listening?', speaker: 'The device’s speaker', external: 'External speakers', wired: 'Wired headphones', bluetooth: 'Bluetooth headphones (AirPods etc.)',
     start: 'Start the test', again: 'Run it again',
     making: 'Making the test sounds', running: 'Testing. Please stay on this page meanwhile.',
@@ -93,8 +102,11 @@ const WORDS = {
     copy: 'Copy the results', share: 'Share', copied: 'The results are copied.',
     selected: 'The results are selected. Copy them with your device’s Copy.',
     bgBtn: 'Start the extra test',
-    bgNote: 'The extra test measures what happens to the sound and the metronome when you leave the page. When asked, switch to another app or tab and come back to this page after about 10 seconds.',
-    bgNow: 'Now switch to another app or tab. Come back to this page after about 10 seconds.',
+    bgNote: 'The extra test measures what happens to the sound and the metronome when you leave the page. When you start it, you’ll hear a chime. Switch to another app or tab when you hear it, and come back to this page when you hear the same chime again.',
+    bgNow: 'Now switch to another app or tab. Come back to this page when you hear the chime again. If you don’t hear it, come back after about 10 seconds.',
+    bgDone: 'The extra test is done. Its result is added to the results above.',
+    bgShort: 'You came back too soon. Start the extra test again, and this time come back after about 10 seconds.',
+    bgNever: 'You didn’t leave the page, so the extra test couldn’t run. You can start it again.',
     privacy: 'This page sends nothing anywhere by itself. The results go only where you copy and share them.',
     other: 'Türkçe'
   }
@@ -287,7 +299,7 @@ async function plain(label, a) {
 }
 const urls = [];
 $('go').onclick = () => {
-  $('go').disabled = true; $('out').hidden = true; $('copy').hidden = true; $('share').hidden = true; $('bg').hidden = true; lines.length = 0; prog(0);
+  $('go').disabled = true; $('out').hidden = true; $('copy').hidden = true; $('share').hidden = true; $('bgbox').hidden = true; lines.length = 0; prog(0);
   say(W('making'));
   // (Everything that sounds made and unlocked on the tap itself, before any wait.)
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
@@ -315,7 +327,7 @@ async function run(resumed, solo, wavEls, mp3Els, quietEls) {
     prog(1); say(W('done'));
   } catch (e) { lines.push('Stopped: ' + (e && e.message || e)); say(W('stopped') + (e && e.message || e), true); }
   ran = true;
-  $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share; $('bg').hidden = false; $('bgnote').hidden = false;
+  $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share; $('bgbox').hidden = false; $('bgstatus').hidden = true;
   $('go').disabled = false; $('go').textContent = W('again');
 }
 $('copy').onclick = async () => {
@@ -325,34 +337,67 @@ $('copy').onclick = async () => {
 };
 $('share').onclick = async () => { try { await navigator.share({ text: $('out').textContent }); } catch (e) { /* closed */ } };
 // ---- out of sight: does the page keep time (timers, frames, the sound) while another app is in front?
+// The chime: two bright bell notes, rising, nothing like the test's own sound (a low tone and clicks). Once to say "leave
+// now", and again (every 5 s from 10 s after leaving) to say "come back". Set ahead on the sound's own clock, so it rings
+// even where the page's timers are stopped, as long as the device keeps the sound going. Its nodes given back, to stop.
+function chime(at) {
+  const nodes = [];
+  for (const [f, d] of [[880, 0], [1318.5, 0.2]]) {
+    const t = at + d, g = ctx.createGain(), hi = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+    hi.gain.value = 0.2; hi.connect(g); g.connect(ctx.destination);
+    for (const [ff, to] of [[f, g], [f * 2.76, hi]]) { const o = ctx.createOscillator(); o.frequency.value = ff; o.connect(to); o.start(t); o.stop(t + 1); nodes.push(o); }
+    nodes.push(g);
+  }
+  return nodes;
+}
+function hush(nodes) { for (const n of nodes) { try { if (n.stop) n.stop(); } catch (e) { /* done already */ } try { n.disconnect(); } catch (e) { /* none */ } } }
+// Its own line under its button, where the person is looking: what to do now, then how it went. (The bar above is the
+// main test's: put away meanwhile.)
+function step(text, now) {
+  const el = $('bgstatus'); el.textContent = text; el.className = now ? 'now' : ''; el.hidden = false;
+  try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { el.scrollIntoView(); }
+}
 $('bg').onclick = () => {
-  $('bg').disabled = true;
+  $('bg').disabled = true; $('go').disabled = true; $('barbox').hidden = true; $('bgstatus').hidden = true;
   const url = URL.createObjectURL(wavBlob(pcm())), a = element(url); a.loop = true;
   ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
   ctx.resume();
   const cap = capture(1), s = ctx.createMediaElementSource(a), g = ctx.createGain(); g.gain.value = 0.35; s.connect(g).connect(ctx.destination); s.connect(cap.merger, 0, 0);
   const played = a.play();
+  chime(ctx.currentTime + 0.05);
   away(url, a, cap, g, played);
 };
 async function away(url, a, cap, g, played) {
   const st = { hidAt: 0, backAt: 0, ticks: 0, frames: 0, states: new Set(), paused: false, blocksAt: 0, blocksBack: 0 };
+  let calls = [];
   const iv = setInterval(() => { if (document.hidden) { st.ticks++; st.states.add(ctx.state); if (a.paused) st.paused = true; } }, 100);
   const raf = () => { if (document.hidden) st.frames++; if (!st.backAt) requestAnimationFrame(raf); }; requestAnimationFrame(raf);
-  const vis = () => { if (document.hidden && !st.hidAt) { st.hidAt = performance.now(); st.blocksAt = cap.st.blocks; } else if (!document.hidden && st.hidAt && !st.backAt) { st.backAt = performance.now(); st.blocksBack = cap.st.blocks; } };
+  const vis = () => {
+    if (document.hidden && !st.hidAt) { st.hidAt = performance.now(); st.blocksAt = cap.st.blocks; const t = ctx.currentTime; calls = [10, 15, 20, 25, 30].flatMap(s => chime(t + s)); }
+    else if (!document.hidden && st.hidAt && !st.backAt) { st.backAt = performance.now(); st.blocksBack = cap.st.blocks; hush(calls); }
+  };
   document.addEventListener('visibilitychange', vis);
   await played.catch(e => e);
-  say(W('bgNow'));
-  const until = performance.now() + 120000;
-  while (!st.backAt && performance.now() < until) await wait(200);
+  step(W('bgNow'), true);
+  // (A minute to leave. Once gone, as long as they're away, up to five minutes.)
+  const leaveBy = performance.now() + 60000;
+  while (!st.hidAt && performance.now() < leaveBy) await wait(200);
+  if (st.hidAt) { const backBy = performance.now() + 300000; while (!st.backAt && performance.now() < backBy) await wait(200); }
+  if (st.hidAt && !st.backAt) { st.backAt = performance.now(); st.blocksBack = cap.st.blocks; }
+  hush(calls);
   await wait(500);
   clearInterval(iv); document.removeEventListener('visibilitychange', vis); a.pause(); cap.sp.disconnect(); g.disconnect(); URL.revokeObjectURL(url);
+  let sec = 0;
   if (!st.backAt) lines.push('Out of sight: the page was never left');
   else {
-    const sec = (st.backAt - st.hidAt) / 1000, heard = (st.blocksBack - st.blocksAt) * 256 / ctx.sampleRate;
+    sec = (st.backAt - st.hidAt) / 1000;
+    const heard = (st.blocksBack - st.blocksAt) * 256 / ctx.sampleRate;
     lines.push('Out of sight for ' + sec.toFixed(1) + ' s: timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–') + ' · recording ' + (st.paused ? 'paused by the device' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
   }
   $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share;
-  $('bg').disabled = false; say(W('done'));
+  $('bg').disabled = false; $('go').disabled = false;
+  step(W(!st.backAt ? 'bgNever' : sec < 5 ? 'bgShort' : 'bgDone'));
 }
 </script>
 </body>
