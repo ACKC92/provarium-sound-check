@@ -192,8 +192,12 @@ const loaded = (els, t) => Promise.race([Promise.all(els.map(a => (a.readyState 
 // ---- listening to what reaches the sound's graph: each element on a channel of its own; the last channel hears clicks
 // made on the sound's own clock, to find how late this listener itself hears (taken off every measure)
 let ctx = null;
+// (A click is heard where it rises over 0.06 and 40 % of that part's loudest so far: an Android phone was found to hand the
+// page its recordings much quieter than they are (Samsung S23 Ultra, Chrome, 15 November: under 0.3, the level this
+// listened for, so nothing was measured). The test's tone, at 0.05, never counts. Silence: under 0.003. peak: each part's
+// loudest, for the results when nothing is measured.)
 function capture(chs) {
-  const sp = ctx.createScriptProcessor(256, chs, 1), merger = ctx.createChannelMerger(chs), st = { on: [], low: [], blocks: 0 };
+  const sp = ctx.createScriptProcessor(256, chs, 1), merger = ctx.createChannelMerger(chs), st = { on: [], low: [], blocks: 0, peak: new Array(chs).fill(0) };
   for (let c = 0; c < chs; c++) { st.on.push([]); st.low.push([]); }
   const last = new Array(chs).fill(-1);
   sp.onaudioprocess = ev => {
@@ -204,9 +208,10 @@ function capture(chs) {
       const x = ib.getChannelData(c); let ss = 0, hot = false;
       for (let i = 0; i < n; i++) {
         const a = Math.abs(x[i]); ss += x[i] * x[i];
-        if (a > 0.3) { hot = true; const t = t0 + i / sr; if (t - last[c] > 0.15) { last[c] = t; st.on[c].push(t); } }
+        if (a > 0.06 && a > 0.4 * st.peak[c]) { hot = true; const t = t0 + i / sr; if (t - last[c] > 0.15) { last[c] = t; st.on[c].push(t); } }
+        if (a > st.peak[c]) st.peak[c] = a;
       }
-      if (!hot) st.low[c].push([t0, Math.sqrt(ss / n) < 0.006, n / sr]);
+      if (!hot) st.low[c].push([t0, Math.sqrt(ss / n) < 0.003, n / sr]);
     }
   };
   merger.connect(sp); sp.connect(ctx.destination);
@@ -282,6 +287,8 @@ async function routed(label, els, f0, f1, quiet) {
   if (res.some(x => x !== 'ok')) lines.push('  play: ' + res.join(', '));
   lines.push('  ▶ to the first sound: ' + ms(startLate) + ' later than it should be');
   lines.push('  heard after the page’s clock, at speed 1: ' + r1.map(show).join(' · '));
+  // (Nothing measured: what reached the listener, to tell a silent part from one too quiet or not playing.)
+  if (r1.every(x => !x)) lines.push('  what reached it: ' + cap.st.blocks + ' blocks, loudest ' + cap.st.peak.slice(0, N).map(v => v.toFixed(3)).join(' · ') + ', clock clicks ' + (cap.st.peak[N] || 0).toFixed(3));
   lines.push('  the 4 parts apart: ' + ms(med(apart)) + ' (most ' + ms(apart.length ? Math.max(...apart) : NaN) + ')');
   if (quiet) { lines.push('  gaps at speed 1: ' + ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN)); return; }
   lines.push('  gaps at speed 1: ' + ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN) + ' · one part re-synced: gap ' + ms(longestGap(low[1], seekC, seekC + 1)) + ', then ' + show(after));
