@@ -45,7 +45,7 @@ pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8p
     <button id="lang" type="button" class="quiet lang"></button>
   </header>
   <p data-t="intro"></p>
-  <label><span data-t="model"></span><input id="model" type="text" autocomplete="off" data-ph="modelPh"></label>
+  <label><span data-t="model"></span><input id="model" type="text" autocomplete="off" aria-required="true" data-ph="modelPh"></label>
   <label><span data-t="out"></span>
     <select id="route"><option value="speaker" data-t="speaker"></option><option value="external" data-t="external"></option><option value="wired" data-t="wired"></option><option value="bluetooth" data-t="bluetooth"></option></select>
   </label>
@@ -298,8 +298,15 @@ async function plain(label, a) {
   lines.push(label + ' on its own (as Hazır Kayıt): ' + (r === 'ok' ? 'moves ' + ms((firstP - callP) / 1000) + ' after ▶ · its clock steps every ' + ms(med(steps)) : 'play: ' + r));
 }
 const urls = [];
+// (The test starts only once the device is named: results without it can't be told apart. Ahmet's of 15 November.)
+let busy = false;
+const ready = () => { $('go').disabled = busy || !$('model').value.trim(); };
+$('model').addEventListener('input', ready);
+addEventListener('pageshow', ready);   // (a name the browser kept on coming back to the page)
+ready();
 $('go').onclick = () => {
-  $('go').disabled = true; $('out').hidden = true; $('copy').hidden = true; $('share').hidden = true; $('bgbox').hidden = true; lines.length = 0; prog(0);
+  if (busy || !$('model').value.trim()) return;
+  busy = true; ready(); $('out').hidden = true; $('copy').hidden = true; $('share').hidden = true; $('bgbox').hidden = true; lines.length = 0; prog(0);
   say(W('making'));
   // (Everything that sounds made and unlocked on the tap itself, before any wait.)
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
@@ -328,7 +335,7 @@ async function run(resumed, solo, wavEls, mp3Els, quietEls) {
   } catch (e) { lines.push('Stopped: ' + (e && e.message || e)); say(W('stopped') + (e && e.message || e), true); }
   ran = true;
   $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share; $('bgbox').hidden = false; $('bgstatus').hidden = true;
-  $('go').disabled = false; $('go').textContent = W('again');
+  busy = false; ready(); $('go').textContent = W('again');
 }
 $('copy').onclick = async () => {
   const txt = $('out').textContent;
@@ -359,7 +366,7 @@ function step(text, now) {
   try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { el.scrollIntoView(); }
 }
 $('bg').onclick = () => {
-  $('bg').disabled = true; $('go').disabled = true; $('barbox').hidden = true; $('bgstatus').hidden = true;
+  busy = true; ready(); $('bg').disabled = true; $('barbox').hidden = true; $('bgstatus').hidden = true;
   const url = URL.createObjectURL(wavBlob(pcm())), a = element(url); a.loop = true;
   ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
   ctx.resume();
@@ -396,7 +403,7 @@ async function away(url, a, cap, g, played) {
     lines.push('Out of sight for ' + sec.toFixed(1) + ' s: timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–') + ' · recording ' + (st.paused ? 'paused by the device' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
   }
   $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share;
-  $('bg').disabled = false; $('go').disabled = false;
+  busy = false; ready(); $('bg').disabled = false;
   step(W(!st.backAt ? 'bgNever' : sec < 5 ? 'bgShort' : 'bgDone'));
 }
 </script>
