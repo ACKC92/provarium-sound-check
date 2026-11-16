@@ -192,30 +192,74 @@ const loaded = (els, t) => Promise.race([Promise.all(els.map(a => (a.readyState 
 // ---- listening to what reaches the sound's graph: each element on a channel of its own; the last channel hears clicks
 // made on the sound's own clock, to find how late this listener itself hears (taken off every measure)
 let ctx = null;
-// (A click is heard where it rises over 0.06 and 40 % of that part's loudest so far: an Android phone was found to hand the
-// page its recordings much quieter than they are (Samsung S23 Ultra, Chrome, 15 November: under 0.3, the level this
-// listened for, so nothing was measured). The test's tone, at 0.05, never counts. Silence: under 0.003. peak: each part's
-// loudest, for the results when nothing is measured.)
+// (A click is heard where it rises over 0.06 and 40 % of that part's loudest so far; the test's tone, at 0.05, never
+// counts. Silence: under 0.003. peak: each part's loudest, for the results when nothing is measured.)
+// (The listener: an AudioWorklet where there is one, each channel an input of its own. Without one, a ScriptProcessor
+// for each channel. One ScriptProcessor for all five channels never ran on a Samsung S23 Ultra's Chrome (15 November:
+// "0 blocks"), though one for a single channel did.)
+const LISTEN_SRC = `class ScListen extends AudioWorkletProcessor {
+  constructor(o) {
+    super(); const n = o.processorOptions.chs;
+    this.n = n; this.peak = new Float32Array(n); this.last = new Float64Array(n).fill(-1); this.ss = new Float64Array(n); this.hot = new Uint8Array(n);
+    this.k = 0; this.t0 = 0; this.live = true; this.out = { blocks: 0, on: [], low: [] };
+    this.port.onmessage = e => { if (e.data === 'stop') this.live = false; };
+  }
+  process(inputs) {
+    if (this.k === 0) this.t0 = currentFrame / sampleRate;
+    for (let c = 0; c < this.n; c++) {
+      const x = inputs[c] && inputs[c][0];
+      if (!x) continue;
+      for (let i = 0; i < x.length; i++) {
+        const a = Math.abs(x[i]); this.ss[c] += x[i] * x[i];
+        if (a > 0.06 && a > 0.4 * this.peak[c]) { this.hot[c] = 1; const t = (currentFrame + i) / sampleRate; if (t - this.last[c] > 0.15) { this.last[c] = t; this.out.on.push([c, t]); } }
+        if (a > this.peak[c]) this.peak[c] = a;
+      }
+    }
+    this.k += 128;
+    if (this.k >= 256) {
+      for (let c = 0; c < this.n; c++) { if (!this.hot[c]) this.out.low.push([c, this.t0, Math.sqrt(this.ss[c] / this.k) < 0.003, this.k / sampleRate]); this.ss[c] = 0; this.hot[c] = 0; }
+      this.out.blocks++; this.k = 0;
+      if (this.out.blocks >= 4) { this.out.peak = Array.from(this.peak); this.port.postMessage(this.out); this.out = { blocks: 0, on: [], low: [] }; }
+    }
+    return this.live;
+  }
+}
+registerProcessor('sc-listen', ScListen);`;
+let LISTEN = 'script', listenLoad = null;
+// (Asked for on the tap, ready before the first measure; a ScriptProcessor if it can't be. ?listen=script: that one.)
+function listenReady() {
+  if (listenLoad) return listenLoad;
+  const want = !/[?&]listen=script\b/.test(location.search) && ctx.audioWorklet && typeof AudioWorkletNode === 'function';
+  if (!want) return (listenLoad = Promise.resolve(LISTEN = 'script'));
+  const u = URL.createObjectURL(new Blob([LISTEN_SRC], { type: 'application/javascript' }));
+  return (listenLoad = ctx.audioWorklet.addModule(u).then(() => (LISTEN = 'worklet'), () => (LISTEN = 'script')).finally(() => URL.revokeObjectURL(u)));
+}
 function capture(chs) {
-  const sp = ctx.createScriptProcessor(256, chs, 1), merger = ctx.createChannelMerger(chs), st = { on: [], low: [], blocks: 0, peak: new Array(chs).fill(0) };
+  const st = { on: [], low: [], blocks: 0, peak: new Array(chs).fill(0) };
   for (let c = 0; c < chs; c++) { st.on.push([]); st.low.push([]); }
-  const last = new Array(chs).fill(-1);
-  sp.onaudioprocess = ev => {
-    st.blocks++;
-    let t0 = ev.playbackTime; if (!(t0 > 0)) t0 = ctx.currentTime;
-    const ib = ev.inputBuffer, n = ib.length, sr = ib.sampleRate;
-    for (let c = 0; c < chs; c++) {
-      const x = ib.getChannelData(c); let ss = 0, hot = false;
+  if (LISTEN === 'worklet') {
+    const node = new AudioWorkletNode(ctx, 'sc-listen', { numberOfInputs: chs, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'discrete', processorOptions: { chs } });
+    node.port.onmessage = e => { const m = e.data; st.blocks += m.blocks; for (const x of m.on) st.on[x[0]].push(x[1]); for (const x of m.low) st.low[x[0]].push([x[1], x[2], x[3]]); m.peak.forEach((v, c) => { st.peak[c] = v; }); };
+    const sink = ctx.createGain(); sink.gain.value = 0; node.connect(sink).connect(ctx.destination);
+    return { st, feed: (src, k) => src.connect(node, 0, k), stop: () => { node.port.postMessage('stop'); try { node.disconnect(); sink.disconnect(); } catch (e) { /* gone */ } } };
+  }
+  const sps = [];
+  for (let c = 0; c < chs; c++) {
+    const sp = ctx.createScriptProcessor(256, 1, 1); let last = -1;
+    sp.onaudioprocess = ev => {
+      if (c === 0) st.blocks++;
+      let t0 = ev.playbackTime; if (!(t0 > 0)) t0 = ctx.currentTime;
+      const x = ev.inputBuffer.getChannelData(0), n = x.length, sr = ev.inputBuffer.sampleRate; let ss = 0, hot = false;
       for (let i = 0; i < n; i++) {
         const a = Math.abs(x[i]); ss += x[i] * x[i];
-        if (a > 0.06 && a > 0.4 * st.peak[c]) { hot = true; const t = t0 + i / sr; if (t - last[c] > 0.15) { last[c] = t; st.on[c].push(t); } }
+        if (a > 0.06 && a > 0.4 * st.peak[c]) { hot = true; const t = t0 + i / sr; if (t - last > 0.15) { last = t; st.on[c].push(t); } }
         if (a > st.peak[c]) st.peak[c] = a;
       }
       if (!hot) st.low[c].push([t0, Math.sqrt(ss / n) < 0.003, n / sr]);
-    }
-  };
-  merger.connect(sp); sp.connect(ctx.destination);
-  return { merger, sp, st };
+    };
+    sp.connect(ctx.destination); sps.push(sp);
+  }
+  return { st, feed: (src, k) => src.connect(sps[k]), stop: () => sps.forEach(sp => { try { sp.disconnect(); } catch (e) { /* gone */ } }) };
 }
 // The page's clock against each element's, sampled as often as the page allows.
 function sampler(els) {
@@ -256,9 +300,9 @@ async function routed(label, els, f0, f1, quiet) {
   const N = els.length;
   await loaded(els, 8000);
   const cap = capture(N + 1), out = ctx.createGain(); out.gain.value = quiet ? 0 : 0.35; out.connect(ctx.destination);
-  els.forEach((a, k) => { const s = ctx.createMediaElementSource(a); s.connect(out); s.connect(cap.merger, 0, k); });
+  els.forEach((a, k) => { const s = ctx.createMediaElementSource(a); s.connect(out); cap.feed(s, k); });
   const cal = [], c0 = ctx.currentTime + 0.25;
-  for (let j = 0; j < 6; j++) { const t = c0 + j * 0.37, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 2000; g.gain.setValueAtTime(0, 0); g.gain.setValueAtTime(0.8, t); g.gain.linearRampToValueAtTime(0, t + 0.006); o.connect(g); g.connect(cap.merger, 0, N); o.start(t); o.stop(t + 0.02); cal.push(t); }
+  for (let j = 0; j < 6; j++) { const t = c0 + j * 0.37, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 2000; g.gain.setValueAtTime(0, 0); g.gain.setValueAtTime(0.8, t); g.gain.linearRampToValueAtTime(0, t + 0.006); o.connect(g); cap.feed(g, N); o.start(t); o.stop(t + 0.02); cal.push(t); }
   await wait(2600);
   const own = med(cal.map(t => { const x = cap.st.on[N].find(o => Math.abs(o - t) < 0.2); return x === undefined ? NaN : x - t; }).filter(isFinite));
   const smp = sampler(els);
@@ -275,7 +319,7 @@ async function routed(label, els, f0, f1, quiet) {
   prog(f1);
   const endC = ctx.currentTime;
   els.forEach(a => a.pause()); smp.stop(); await wait(300);
-  cap.sp.disconnect(); out.disconnect();
+  cap.stop(); out.disconnect();
   const O = isFinite(own) ? own : 0, on = cap.st.on.map(a => a.map(t => t - O)), low = cap.st.low.map(a => a.map(x => [x[0] - O, x[1], x[2]]));
   const first = on[0][0], startLate = first !== undefined ? first - callC - CLICKS[0] : NaN;
   const r1 = els.map((a, k) => { const at = fit(smp.pts, k, playedC + 0.4, seekC - 0.05); return at ? lateness(on[k], at, playedC + 0.4, seekC - 0.05) : null; });
@@ -318,7 +362,7 @@ $('go').onclick = () => {
   // (Everything that sounds made and unlocked on the tap itself, before any wait.)
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
   ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-  const resumed = ctx.resume();
+  const resumed = ctx.resume().then(listenReady);
   urls.forEach(u => URL.revokeObjectURL(u)); urls.length = 0;
   const d = pcm(), wv = URL.createObjectURL(wavBlob(d)); urls.push(wv);
   let mp = null; try { const b = mp3Blob(d); if (b) { mp = URL.createObjectURL(b); urls.push(mp); } } catch (e) { mp = null; }
@@ -333,7 +377,7 @@ async function run(resumed, solo, wavEls, mp3Els, quietEls) {
     lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC');
     lines.push('Device: ' + ($('model').value.trim() || '(not given)') + ' · listening on: ' + $('route').value);
     lines.push('Browser: ' + navigator.userAgent);
-    lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state);
+    lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state + ' · listener ' + LISTEN);
     await plain('Plain', solo); prog(0.05);
     await routed('WAV', wavEls, 0.05, 0.42);
     await routed('MP3', mp3Els, 0.42, 0.8);
@@ -377,7 +421,7 @@ $('bg').onclick = () => {
   const url = URL.createObjectURL(wavBlob(pcm())), a = element(url); a.loop = true;
   ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
   ctx.resume();
-  const cap = capture(1), s = ctx.createMediaElementSource(a), g = ctx.createGain(); g.gain.value = 0.35; s.connect(g).connect(ctx.destination); s.connect(cap.merger, 0, 0);
+  const cap = capture(1), s = ctx.createMediaElementSource(a), g = ctx.createGain(); g.gain.value = 0.35; s.connect(g).connect(ctx.destination); cap.feed(s, 0);
   const played = a.play();
   chime(ctx.currentTime + 0.05);
   away(url, a, cap, g, played);
@@ -401,7 +445,7 @@ async function away(url, a, cap, g, played) {
   if (st.hidAt && !st.backAt) { st.backAt = performance.now(); st.blocksBack = cap.st.blocks; }
   hush(calls);
   await wait(500);
-  clearInterval(iv); document.removeEventListener('visibilitychange', vis); a.pause(); cap.sp.disconnect(); g.disconnect(); URL.revokeObjectURL(url);
+  clearInterval(iv); document.removeEventListener('visibilitychange', vis); a.pause(); cap.stop(); g.disconnect(); URL.revokeObjectURL(url);
   let sec = 0;
   if (!st.backAt) lines.push('Out of sight: the page was never left');
   else {
