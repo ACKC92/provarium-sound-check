@@ -15,7 +15,8 @@ A one-page test for [Provarium](https://provarium.net)'s player. It plays short 
 - Eight MP3 recordings at once, as a piece in eight parts, at the device's own sound rate and again at 44,100 Hz: gaps and glitches.
 - One "part and rest" recording (stereo, the part on the left, the others on the right), split and mixed again, at speed 1 and 0.75.
 - A player of the page's own: eight parts decoded a few seconds ahead in a worker and mixed by the page, at speed 1 and 0.75 (its own stretching): whether the decoding keeps up, how much of the device it takes, gaps and glitches.
-- The second test: the screen locked or another app in front for a few seconds while that player plays. Do the sound, the decoding and the page's timers go on?
+- The second test: the screen locked or another app in front for a few seconds while that player plays. Do the sound, the decoding and the page's timers go on? And back on the page, does the sound go on by itself, or only once it's asked to?
+- Whether the sound's clock is moving, and every change in its state with when it came (from version 3.1). Each run starts with new sounds, after a look at the last run's: had it stopped, and did a tap bring it back?
 
 ## Privacy
 Nothing is sent anywhere. The page has no analytics and loads nothing but its own files. The results stay on the screen until the person taps Copy or Share. They hold the browser's own description (its version and the device's system version), the device's model and what it's heard through, as the person types or picks them, and the timings.

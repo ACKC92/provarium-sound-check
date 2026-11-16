@@ -197,6 +197,16 @@ const loaded = (els, t) => Promise.race([Promise.all(els.map(a => (a.readyState 
 // ---- listening to what reaches the sound's graph: each element on a channel of its own; the last channel hears clicks
 // made on the sound's own clock, to find how late this listener itself hears (taken off every measure)
 let ctx = null, ctx44 = null;
+// (From version 3.1: every change in a sound's state kept for the log, with when it came and which round was on. On 16
+// November an iPhone 15 Pro's sound stopped for good in the second test (the screen locked, then the sound moved from
+// Bluetooth to the speaker), and the next run, on that same sound, heard nothing at all. A change that comes while the
+// page is out of sight is often only told when it's back: its sound's clock, kept with it, says when it really came.)
+const changes = [];
+let runAt = 0, phase = '', toldTo = 0;   // (toldTo: changes before it are in the log already)
+function watch(c, name) { c.onstatechange = () => changes.push([performance.now(), name, c.state, c.currentTime, phase]); }
+// How fast a sound's clock moves against the page's, over t ms: about 1 when it runs, 0 when it has stopped.
+async function moving(c, t) { const a = c.currentTime, p = performance.now(); await wait(t || 300); const s = (performance.now() - p) / 1000; return s > 0 ? (c.currentTime - a) / s : NaN; }
+const pace = r => (!isFinite(r) ? '–' : r > 0.9 && r < 1.1 ? 'moving' : r < 0.05 ? 'not moving' : 'moving at ' + r.toFixed(2) + '×');
 // (A click is heard where it rises over 0.06 and 40 % of that part's loudest so far; the test's tone, at 0.05, never
 // counts. Silence: under 0.003. peak: each part's loudest, for the results when nothing is measured.)
 // (Glitches, from version 3: the tone jumping by more than 0.025 from one sample to the next, which a sine at 220 Hz
@@ -439,10 +449,13 @@ function fit(pts, k, c0, c1) {
 function lateness(onsets, at, c0, c1) {
   const exp = CLICKS.map(at).filter(c => c >= c0 && c <= c1), on = onsets.filter(t => t >= c0 - 0.5 && t <= c1 + 3);
   if (!exp.length || !on.length) return null;
-  let best = 0, bn = -1;
-  for (let d = -0.5; d <= 2.5; d += 0.002) { let k = 0; for (const e of exp) if (on.some(t => Math.abs(t - e - d) < 0.02)) k++; if (k > bn) { bn = k; best = d; } }
+  let best = 0, bn = -1; const tried = [];
+  for (let d = -0.5; d <= 2.5; d += 0.002) { let k = 0; for (const e of exp) if (on.some(t => Math.abs(t - e - d) < 0.02)) k++; tried.push([d, k]); if (k > bn) { bn = k; best = d; } }
+  // (From version 3.1: another shift, a tenth of a second or more away, that lines up nearly as many is told too. The
+  // iPhone 15 Pro's part-and-rest round of 16 November was heard 2.1 s late, which may have been such a shift.)
+  let alt = NaN, an = 0; for (const [d, k] of tried) if (Math.abs(d - best) > 0.1 && k > an) { an = k; alt = d; }
   const res = []; for (const e of exp) { const t = on.find(x => Math.abs(x - e - best) < 0.03); if (t !== undefined) res.push(t - e); }
-  return { late: med(res), spread: mad(res), got: res.length, of: exp.length };
+  return { late: med(res), spread: mad(res), got: res.length, of: exp.length, alt: an >= 2 && an >= 0.8 * bn ? alt : NaN };
 }
 const gaps = (low, c0, c1) => low.filter(x => x[1] && x[0] >= c0 && x[0] <= c1).reduce((s, x) => s + x[2], 0);
 function longestGap(low, c0, c1) { let best = 0, run = 0; for (const x of low) { if (x[0] < c0 || x[0] > c1) continue; if (x[1]) { run += x[2]; best = Math.max(best, run); } else run = 0; } return best; }
@@ -454,7 +467,7 @@ function glitches(gl, c0, c1, c) {
   const per = gl.map(a => a.filter(t => t >= c0 && t <= c1).length), most = Math.max(...per), all = per.reduce((s, x) => s + x, 0);
   return (most / sec).toFixed(1) + '/s' + (gl.length > 1 ? ' (the worst part; ' + all + ' in all)' : '');
 }
-const show = r => (r ? ms(r.late) + ' (±' + Math.round(r.spread * 1000) + ', ' + r.got + '/' + r.of + ')' : 'not measured');
+const show = r => (r ? ms(r.late) + ' (±' + Math.round(r.spread * 1000) + ', ' + r.got + '/' + r.of + (isFinite(r.alt) ? ', unsure: ' + ms(r.alt) + ' fits nearly as well' : '') + ')' : 'not measured');
 
 // Parts through the sound's graph, as Ayrık Partiler, MuseScore and MusicXML play: how late each is heard after its own
 // clock, how far apart they are, gaps and glitches; one put back in step while playing, as Provarium keeps parts
@@ -483,7 +496,7 @@ async function routed(label, els, f0, f1, o) {
   const own = med(cal.map(t => { const x = cap.st.on[N].find(v => Math.abs(v - t) < 0.2); return x === undefined ? NaN : x - t; }).filter(isFinite));
   const smp = sampler(els, c);
   prog(f0);
-  const callC = c.currentTime;
+  const callC = c.currentTime, callP = performance.now();
   const res = await Promise.all(els.map(a => a.play().then(() => 'ok', e => (e && e.name) || 'refused')));
   const playedC = c.currentTime;
   await wait(eight ? 6000 : 4200); prog(f0 + (f1 - f0) * 0.3);
@@ -492,7 +505,7 @@ async function routed(label, els, f0, f1, o) {
   const rateC = c.currentTime;
   if (!eight) { els.forEach(a => { a.playbackRate = 0.75; }); await wait(6500); }
   prog(f1);
-  const endC = c.currentTime;
+  const endC = c.currentTime, endP = performance.now();
   els.forEach(a => a.pause()); smp.stop(); await wait(300);
   cap.stop(); out.disconnect();
   const O = isFinite(own) ? own : 0, on = cap.st.on.map(a => a.map(t => t - O)), low = cap.st.low.map(a => a.map(x => [x[0] - O, x[1], x[2]])), gl = cap.st.gl.slice(0, N).map(a => a.map(t => t - O));
@@ -512,7 +525,7 @@ async function routed(label, els, f0, f1, o) {
     lines.push('  heard after the page’s clock, at speed 1: ' + (got.length ? ms(Math.min(...got)) + ' to ' + ms(Math.max(...got)) + ' (' + got.length + ' of 8 parts measured)' : 'not measured'));
   } else lines.push('  heard after the page’s clock, at speed 1: ' + r1.map(show).join(' · '));
   // (Nothing measured: what reached the listener, to tell a silent part from one too quiet or not playing.)
-  if (r1.every(x => !x)) lines.push('  what reached it: ' + cap.st.blocks + ' blocks, loudest ' + cap.st.peak.slice(0, N).map(v => v.toFixed(3)).join(' · ') + ', clock clicks ' + (cap.st.peak[N] || 0).toFixed(3));
+  if (r1.every(x => !x)) lines.push('  what reached it: ' + cap.st.blocks + ' blocks, loudest ' + cap.st.peak.slice(0, N).map(v => v.toFixed(3)).join(' · ') + ', clock clicks ' + (cap.st.peak[N] || 0).toFixed(3) + ' · the sound ' + c.state + ', its clock ' + pace((endC - callC) / ((endP - callP) / 1000)));
   if (N > 1) lines.push('  the ' + N + ' parts apart: ' + ms(med(apart)) + ' (most ' + ms(apart.length ? Math.max(...apart) : NaN) + ')');
   const gap1 = ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN);
   if (eight) { lines.push('  gaps at speed 1: ' + gap1 + ' · glitches ' + g1); return; }
@@ -547,21 +560,22 @@ async function own(f0, f1, bytes) {
   try { node = new AudioWorkletNode(ctx, 'sc-play', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { parts: 8, rate: SR } }); } catch (e) { lines.push(label + ': ' + (e && e.message || e)); worker.terminate(); return null; }
   const marks = new Map();
   node.port.onmessage = e => { if (e.data.type === 'mark') { const f = marks.get(e.data.id); if (f) { marks.delete(e.data.id); f(e.data); } } };
-  const mark = id => new Promise(ok => { marks.set(id, ok); node.port.postMessage({ type: 'mark', id }); setTimeout(() => { if (marks.has(id)) { marks.delete(id); ok(null); } }, 3000); });
+  let markN = 0;
+  const mark = (name, t) => new Promise(ok => { const id = name + ' ' + (++markN); marks.set(id, ok); node.port.postMessage({ type: 'mark', id }); setTimeout(() => { if (marks.has(id)) { marks.delete(id); ok(null); } }, t || 3000); });
   let errs = []; worker.onmessage = e => { if (e.data.type === 'error') errs.push(e.data.message); };
   node.port.postMessage({ type: 'port', port: ch.port2 }, [ch.port2]);
   const out = ctx.createGain(); out.gain.value = 0.35; node.connect(out).connect(ctx.destination);
   const cap = capture(1); cap.feed(node, 0);
   await wait(1500);   // (the first seconds decoded, as when a piece is opened)
   prog(f0 + (f1 - f0) * 0.2);
-  const callC = ctx.currentTime; node.port.postMessage({ type: 'play' });
+  const callC = ctx.currentTime, callP = performance.now(); node.port.postMessage({ type: 'play' });
   await wait(5000);
   const m1 = await mark('speed-1');
   const rateC = ctx.currentTime; node.port.postMessage({ type: 'speed', v: 0.75 });
   prog(f0 + (f1 - f0) * 0.6);
   await wait(6500);
   const m2 = await mark('speed-075');
-  const endC = ctx.currentTime;
+  const endC = ctx.currentTime, endP = performance.now();
   node.port.postMessage({ type: 'stop' });
   const ds = await new Promise(ok => { worker.onmessage = e => { if (e.data.type === 'stats') ok(e.data); else if (e.data.type === 'error') errs.push(e.data.message); }; worker.postMessage({ type: 'stats' }); setTimeout(() => ok(null), 2000); });
   await wait(300); cap.stop();
@@ -570,7 +584,7 @@ async function own(f0, f1, bytes) {
   lines.push(label + ':');
   if (errs.length) lines.push('  decoder: ' + errs.slice(0, 2).join(' · '));
   lines.push('  decoding: ' + (ds && ds.sec && ds.ms ? Math.round(ds.sec / (ds.ms / 1000)) + '× faster than it plays, one part · all 8 at speed 1: ' + (800 * ds.ms / 1000 / ds.sec).toFixed(1) + '% of one core' : 'not measured') + ' · the decoder ready ' + ms(readyMs / 1000) + ' after it was asked');
-  lines.push('  ▶ to the first sound: ' + ms(first - callC));
+  lines.push('  ▶ to the first sound: ' + ms(first - callC) + (isFinite(first) ? '' : ' · nothing played · the sound ' + ctx.state + ', its clock ' + pace((endC - callC) / ((endP - callP) / 1000))));
   lines.push('  at speed 1: ' + (m1 ? m1.under : '–') + ' underruns · gaps ' + ms(isFinite(first) ? gaps(low, first + 0.2, rateC - 0.05) : NaN) + ' · glitches ' + (isFinite(first) ? glitches([cap.st.gl[0]], first + 0.3, rateC) : '–'));
   lines.push('  at speed 0.75: ' + (m1 && m2 ? m2.under - m1.under : '–') + ' underruns · gaps ' + ms(gaps(low, rateC + 0.3, endC - 0.05)) + ' · glitches ' + glitches([cap.st.gl[0]], rateC + 0.3, endC - 0.05));
   return { worker, node, out, mark, errs };
@@ -599,8 +613,21 @@ $('go').onclick = () => {
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
   keepAwake(); inLast = false; hiddenRounds = 0;
   const AC = window.AudioContext || window.webkitAudioContext;
-  ctx = ctx || new AC();
-  if (!ctx44 && ctx.sampleRate !== 44100) { try { ctx44 = new AC({ sampleRate: 44100 }); } catch (e) { ctx44 = null; } }
+  // (From version 3.1: new sounds for every run, the last run's closed. Until then a second run kept the first's sound,
+  // which on the iPhone 15 Pro had stopped for good. Before it's closed, one look: had it stopped, and did a resume() on
+  // this tap bring it back? That is what Provarium would try first.)
+  const was = ctx ? { c: ctx, state: ctx.state, t: ctx.currentTime, p: performance.now() } : null;
+  if (was) { was.c.onstatechange = null; was.c.resume().catch(() => null); }
+  if (ctx44) { ctx44.onstatechange = null; ctx44.close().catch(() => null); }
+  listenLoads.clear(); changes.length = 0; runAt = performance.now(); phase = 'start';
+  ctx = new AC(); watch(ctx, '');
+  ctx44 = null; if (ctx.sampleRate !== 44100) { try { ctx44 = new AC({ sampleRate: 44100 }); watch(ctx44, ' (44100 Hz)'); } catch (e) { ctx44 = null; } }
+  const before = was ? wait(400).then(() => {
+    const r = (was.c.currentTime - was.t) / ((performance.now() - was.p) / 1000);
+    const said = 'The last run’s sound, on this tap: ' + was.state + (was.state === 'running' ? '' : ' · after resume(): ' + was.c.state) + ' · its clock ' + pace(r);
+    was.c.close().catch(() => null);
+    return said;
+  }) : null;
   const resumed = Promise.all([ctx.resume().then(() => listenReady(ctx)), ctx44 ? ctx44.resume().then(() => listenReady(ctx44)).catch(() => null) : null]);
   urls.forEach(u => URL.revokeObjectURL(u)); urls.length = 0;
   const d = pcm(), wv = URL.createObjectURL(wavBlob(d)); urls.push(wv);
@@ -613,27 +640,39 @@ $('go').onclick = () => {
     pr: stUrl ? [element(stUrl)] : null
   };
   unlock([E.solo].concat(E.wav, E.mp3 || [], E.eight || [], E.eight44 || [], E.pr || []));
-  run(resumed, E, st);
+  run(resumed, E, st, before);
 };
-async function run(resumed, E, st) {
+// The changes in a sound's state from `from` on, each with the round it came in, or as `when` puts it.
+function told(from, when) {
+  return changes.filter(x => x[0] >= from).map(x => x[2] + x[1] + ' ' + (when ? when(x) : 'in ' + x[4] + ', ' + ((x[0] - runAt) / 1000).toFixed(1) + ' s in')).join(' · ');
+}
+async function run(resumed, E, st, before) {
   let op = null;
   try {
     await resumed;
     const bytes = st ? await st.arrayBuffer() : null;
     say(W('running'));
-    lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC · version 3');
+    const [mv, mv44] = await Promise.all([moving(ctx), ctx44 ? moving(ctx44) : NaN]);
+    lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC · version 3.1');
     lines.push('Device: ' + ($('model').value.trim() || '(not given)') + ' · listening on: ' + $('route').value);
     lines.push('Browser: ' + navigator.userAgent);
-    lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state + ' · listener ' + LISTEN + ' · screen kept on ' + (awake ? 'yes' : navigator.wakeLock ? 'refused' : 'no'));
-    await plain('Plain', E.solo); prog(0.04);
-    await routed('WAV', E.wav, 0.04, 0.2);
-    await routed('MP3', E.mp3, 0.2, 0.36);
-    await routed('MP3', E.eight, 0.36, 0.48, { eight: true });
+    lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state + ', its clock ' + pace(mv) + (ctx44 ? ' (at 44100 Hz: ' + ctx44.state + ', ' + pace(mv44) + ')' : '') + ' · listener ' + LISTEN + ' · screen kept on ' + (awake ? 'yes' : navigator.wakeLock ? 'refused' : 'no'));
+    if (before) lines.push(await before);
+    // (Changes from here on are told: the first moments, the sounds starting, aren't.)
+    const from = performance.now();
+    phase = 'Plain'; await plain('Plain', E.solo); prog(0.04);
+    phase = 'WAV'; await routed('WAV', E.wav, 0.04, 0.2);
+    phase = 'MP3'; await routed('MP3', E.mp3, 0.2, 0.36);
+    phase = 'MP3, eight parts'; await routed('MP3', E.eight, 0.36, 0.48, { eight: true });
+    phase = 'MP3, eight parts at 44100 Hz';
     if (ctx44 && ctx44.state === 'running') await routed('MP3', E.eight44, 0.48, 0.6, { eight: true, c: ctx44 });
     else lines.push('MP3, eight parts at 44100 Hz: ' + (ctx.sampleRate === 44100 ? 'the sound runs at 44100 Hz already' : 'that sound could not be made here' + (ctx44 ? ' (' + ctx44.state + ')' : '')));
-    await routed('Part and rest (one stereo MP3, its start trimmed)', E.pr, 0.6, 0.78, { pr: true });
-    op = await own(0.78, 1, bytes);
+    phase = 'Part and rest'; await routed('Part and rest (one stereo MP3, its start trimmed)', E.pr, 0.6, 0.78, { pr: true });
+    phase = 'Own player'; op = await own(0.78, 1, bytes);
+    phase = 'between the tests';
     if (hiddenRounds) lines.push('Note: the page went out of sight ' + hiddenRounds + ' time' + (hiddenRounds > 1 ? 's' : '') + ' during the first test (the screen turned off?), so its rounds may be off.');
+    const ch = told(from); if (ch) lines.push('The sound’s state changed during the first test: ' + ch);
+    toldTo = performance.now();
   } catch (e) {
     lines.push('Stopped: ' + (e && e.message || e)); say(W('stopped') + (e && e.message || e), true);
     keep = op; finish(); return;
@@ -647,7 +686,7 @@ async function run(resumed, E, st) {
 // The second test, from its own tap. Done only once the page was left for 5 s or more and came back; otherwise it says
 // why and waits for the button again. Then the one log.
 async function second() {
-  busy = true; ready(); inLast = true;
+  busy = true; ready(); inLast = true; phase = 'the second test';
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
   ctx.resume().catch(() => null);
   note('lastNow');
@@ -701,12 +740,14 @@ async function last(op) {
   }
   try { $('lastnow').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { $('lastnow').scrollIntoView(); }
   if (played) await played;
-  const st = await away(op, el, cap);
-  if (op) op.node.port.postMessage({ type: 'stop' });
-  if (el) { el.pause(); cap.stop(); g.disconnect(); URL.revokeObjectURL(url); }
-  if (!st.backAt) return 'never';
+  const from = toldTo, st = await away(op, el, cap);
+  const quiet = () => { if (op) op.node.port.postMessage({ type: 'stop' }); if (el) { el.pause(); cap.stop(); g.disconnect(); URL.revokeObjectURL(url); } };
+  if (!st.backAt) { quiet(); return 'never'; }
   const sec = (st.backAt - st.hidAt) / 1000;
-  if (sec < 5) return 'short';
+  if (sec < 5) { quiet(); return 'short'; }
+  note(''); say(W('running'));
+  const back = await again(op);
+  quiet();
   const base = 'Out of sight for ' + sec.toFixed(1) + ' s' + (op ? ' (the page’s own player playing)' : '') + ': timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–');
   if (op) {
     const a = await st.mh, b = await st.mb;
@@ -715,17 +756,35 @@ async function last(op) {
     const heard = (st.blocksBack - st.blocksAt) * 256 / ctx.sampleRate;
     lines.push(base + ' · recording ' + (st.paused ? 'paused by the device' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
   }
+  // (Each change told when the page heard of it, and where the sound's clock was then from where it was on leaving: a
+  // clock that stopped says when the sound did.)
+  const rel = x => (x[0] < st.hidAt ? ((st.hidAt - x[0]) / 1000).toFixed(1) + ' s before leaving' : x[0] < st.backAt ? ((x[0] - st.hidAt) / 1000).toFixed(1) + ' s after leaving' : ((x[0] - st.backAt) / 1000).toFixed(1) + ' s after coming back') + ', its clock ' + (x[3] - st.hidC).toFixed(1) + ' s past leaving';
+  const ch = told(from, rel); if (ch) lines.push('  the sound’s state changes: ' + ch);
+  lines.push('  ' + back);
   return 'ok';
+}
+// (From version 3.1.) Back on the page: does the sound go on by itself? Its clock over a second, and the own player's
+// sound. If not, one resume() without a tap, as Provarium could try when the page is back, and the same look again.
+async function again(op) {
+  const look = async t => {
+    const a = op ? await op.mark('look', 1500) : null, pa = performance.now(), r = await moving(ctx, t), b = op ? await op.mark('look', 1500) : null, pb = performance.now();
+    const p = a && b ? (b.frames - a.frames) / ctx.sampleRate / ((pb - pa) / 1000) : NaN;
+    return { r, said: ctx.state + ', its clock ' + pace(r) + (op ? ', the own player ' + (!isFinite(p) ? 'not answering' : p > 0.8 ? 'playing' : p < 0.05 ? 'silent' : 'playing ' + Math.round(p * 100) + '% of the time') : '') };
+  };
+  const one = await look(1000);
+  let said = 'back on the page: the sound ' + one.said;
+  if (!(one.r > 0.5)) { ctx.resume().catch(() => null); const two = await look(1000); said += ' · after resume() without a tap: ' + two.said; }
+  return said;
 }
 // One try: a minute to leave, then as long as they're away, up to five minutes; the chime to go, and to come back.
 async function away(op, el, cap) {
-  const st = { hidAt: 0, backAt: 0, ticks: 0, frames: 0, states: new Set(), paused: false, blocksAt: 0, blocksBack: 0, mh: null, mb: null };
+  const st = { hidAt: 0, hidC: 0, backAt: 0, ticks: 0, frames: 0, states: new Set(), paused: false, blocksAt: 0, blocksBack: 0, mh: null, mb: null };
   let calls = [];
   const go = chime(ctx.currentTime + 0.05);
   const iv = setInterval(() => { if (document.hidden) { st.ticks++; st.states.add(ctx.state); if (el && el.paused) st.paused = true; } }, 100);
   const raf = () => { if (document.hidden) st.frames++; if (!st.backAt) requestAnimationFrame(raf); }; requestAnimationFrame(raf);
   const vis = () => {
-    if (document.hidden && !st.hidAt) { st.hidAt = performance.now(); if (op) st.mh = op.mark('hid'); if (cap) st.blocksAt = cap.st.blocks; const t = ctx.currentTime; calls = [10, 15, 20, 25, 30].flatMap(s => chime(t + s)); }
+    if (document.hidden && !st.hidAt) { st.hidAt = performance.now(); st.hidC = ctx.currentTime; if (op) st.mh = op.mark('hid'); if (cap) st.blocksAt = cap.st.blocks; const t = ctx.currentTime; calls = [10, 15, 20, 25, 30].flatMap(s => chime(t + s)); }
     else if (!document.hidden && st.hidAt && !st.backAt) { st.backAt = performance.now(); if (op) st.mb = op.mark('back'); if (cap) st.blocksBack = cap.st.blocks; hush(calls); }
   };
   document.addEventListener('visibilitychange', vis);
