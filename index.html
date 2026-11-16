@@ -542,6 +542,7 @@ async function own(f0, f1, bytes) {
   const ready = new Promise((ok, bad) => { worker.onmessage = e => { if (e.data.type === 'ready') ok(); else if (e.data.type === 'error') bad(new Error(e.data.message)); }; worker.onerror = ev => bad(new Error(ev.message || 'the worker failed')); });
   worker.postMessage({ type: 'init', lib: new URL('mpg123-decoder.min.js', location.href).href, bytes: bytes.slice(0), parts: 8, port: ch.port1 }, [ch.port1]);
   try { await Promise.race([ready, wait(15000).then(() => { throw new Error('the decoder did not load'); })]); } catch (e) { lines.push(label + ': ' + e.message); worker.terminate(); return null; }
+  const readyMs = performance.now() - t0;   // (the decoder fetched, compiled and started: not the wait below)
   let node;
   try { node = new AudioWorkletNode(ctx, 'sc-play', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { parts: 8, rate: SR } }); } catch (e) { lines.push(label + ': ' + (e && e.message || e)); worker.terminate(); return null; }
   const marks = new Map();
@@ -552,7 +553,6 @@ async function own(f0, f1, bytes) {
   const out = ctx.createGain(); out.gain.value = 0.35; node.connect(out).connect(ctx.destination);
   const cap = capture(1); cap.feed(node, 0);
   await wait(1500);   // (the first seconds decoded, as when a piece is opened)
-  const readyMs = performance.now() - t0;
   prog(f0 + (f1 - f0) * 0.2);
   const callC = ctx.currentTime; node.port.postMessage({ type: 'play' });
   await wait(5000);
@@ -569,7 +569,7 @@ async function own(f0, f1, bytes) {
   const first = m1 && m1.first >= 0 ? m1.first : NaN, low = cap.st.low[0];
   lines.push(label + ':');
   if (errs.length) lines.push('  decoder: ' + errs.slice(0, 2).join(' · '));
-  lines.push('  decoding: ' + (ds && ds.sec && ds.ms ? Math.round(ds.sec / (ds.ms / 1000)) + '× faster than it plays, one part · all 8 at speed 1: ' + (800 * ds.ms / 1000 / ds.sec).toFixed(1) + '% of one core' : 'not measured') + ' · ready to play ' + ms(readyMs / 1000) + ' after it was asked');
+  lines.push('  decoding: ' + (ds && ds.sec && ds.ms ? Math.round(ds.sec / (ds.ms / 1000)) + '× faster than it plays, one part · all 8 at speed 1: ' + (800 * ds.ms / 1000 / ds.sec).toFixed(1) + '% of one core' : 'not measured') + ' · the decoder ready ' + ms(readyMs / 1000) + ' after it was asked');
   lines.push('  ▶ to the first sound: ' + ms(first - callC));
   lines.push('  at speed 1: ' + (m1 ? m1.under : '–') + ' underruns · gaps ' + ms(isFinite(first) ? gaps(low, first + 0.2, rateC - 0.05) : NaN) + ' · glitches ' + (isFinite(first) ? glitches([cap.st.gl[0]], first + 0.3, rateC) : '–'));
   lines.push('  at speed 0.75: ' + (m1 && m2 ? m2.under - m1.under : '–') + ' underruns · gaps ' + ms(gaps(low, rateC + 0.3, endC - 0.05)) + ' · glitches ' + glitches([cap.st.gl[0]], rateC + 0.3, endC - 0.05));
