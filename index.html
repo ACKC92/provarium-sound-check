@@ -30,9 +30,7 @@ button.lang { min-height: 40px; padding: 0 12px; font-size: 15px; }
 button:disabled { opacity: .45; cursor: default; }
 #status { font-weight: 600; min-height: 1.5em; }
 #status.warn { color: var(--warn); }
-.extra { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
-#bgstatus { font-weight: 600; }
-#bgstatus.now { padding: 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--field); }
+#lastnow { font-weight: 600; padding: 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--field); }
 .bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); white-space: pre-wrap; word-break: break-word; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; -webkit-user-select: text; user-select: text; }
@@ -52,16 +50,12 @@ pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8p
   <div class="row"><button id="go" type="button" data-t="start"></button></div>
   <div id="status" aria-live="polite" hidden></div>
   <div class="bar" id="barbox" aria-hidden="true" hidden><i id="prog"></i></div>
+  <p id="lastnow" aria-live="polite" hidden></p>
   <pre id="out" hidden></pre>
   <div class="row">
     <button id="copy" type="button" data-t="copy" hidden></button>
     <button id="share" type="button" class="quiet" data-t="share" hidden></button>
   </div>
-  <section id="bgbox" class="extra" hidden>
-    <p class="mute" data-t="bgNote"></p>
-    <div class="row"><button id="bg" type="button" class="quiet" data-t="bgBtn"></button></div>
-    <div id="bgstatus" aria-live="polite" hidden></div>
-  </section>
   <p class="mute" data-t="privacy"></p>
 </main>
 <script src="lame.min.js"></script>
@@ -72,41 +66,39 @@ pre { margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8p
 const WORDS = {
   tr: {
     title: 'Ses zamanlaması testi',
-    intro: 'Bu sayfa, Provarium’un oynatıcısında metronomla kaydın birbirinden kayması sorununu incelemek için hazırlanmıştır. Test, Provarium’un kayıtları çaldığı şekilde kısa sesler çalar ve her sesin gerçekte ne zaman duyulduğunu ölçer. Başlamadan önce cihazınızın sesini biraz açın. Telefon kullanıyorsanız, telefonunuzun sessiz modda olmadığından da emin olun. Test yaklaşık 1 dakika sürer.',
+    intro: 'Bu sayfa, Provarium’un oynatıcısında metronomla kaydın birbirinden kayması sorununu incelemek için hazırlanmıştır. Test, Provarium’un kayıtları çaldığı şekilde kısa sesler çalar ve her sesin gerçekte ne zaman duyulduğunu ölçer. Başlamadan önce cihazınızın sesini biraz açın. Telefon kullanıyorsanız, telefonunuzun sessiz modda olmadığından da emin olun. Peş peşe iki test yapılır ve ikisi birlikte yaklaşık 2 dakika sürer. İkinci testte kısa bir süre için ekranı kilitlemeniz ya da başka bir uygulamaya geçmeniz istenir.',
     model: 'Cihazınızın modeli', modelPh: 'ör. iPhone 13, iPad Air, Galaxy S23, Windows bilgisayar',
     out: 'Sesi nereden dinliyorsunuz?', speaker: 'Cihazın hoparlöründen', external: 'Harici hoparlörden', wired: 'Kablolu kulaklıktan', bluetooth: 'Bluetooth kulaklıktan (AirPods vb.)',
     start: 'Testi başlat', again: 'Testi tekrarla',
     making: 'Test sesleri hazırlanıyor', running: 'Test sürüyor. Bu sırada sayfadan ayrılmayın.',
-    done: 'Test tamamlandı. Sonuçları kopyalayıp bu sayfayı size gönderen kişiye iletin.',
+    done: 'İki test de tamamlandı. Sonuçları kopyalayıp bu sayfayı size gönderen kişiye iletin.',
     stopped: 'Test durdu: ',
     copy: 'Sonuçları kopyala', share: 'Paylaş', copied: 'Sonuçlar kopyalandı.',
     selected: 'Sonuçlar seçildi. Cihazınızın Kopyala seçeneğiyle kopyalayabilirsiniz.',
-    bgBtn: 'Ek testi başlat',
-    bgNote: 'Ek test, sayfadan ayrıldığınızda sesin ve metronomun ne olduğunu ölçer. Ek testi başlattığınızda bir uyarı sesi duyacaksınız. Bu sesi duyunca başka bir uygulamaya ya da sekmeye geçin, aynı sesi yeniden duyunca da bu sayfaya geri dönün.',
-    bgNow: 'Şimdi başka bir uygulamaya ya da sekmeye geçin. Uyarı sesini yeniden duyunca bu sayfaya geri dönün. Sesi duymazsanız yaklaşık 10 saniye sonra geri dönün.',
-    bgDone: 'Ek test tamamlandı. Sonucu yukarıdaki sonuçlara eklendi.',
-    bgShort: 'Çok erken döndünüz. Ek testi yeniden başlatın, bu kez yaklaşık 10 saniye sonra geri dönün.',
-    bgNever: 'Sayfadan ayrılmadığınız için ek test yapılamadı. Ek testi yeniden başlatabilirsiniz.',
+    second: 'İkinci testi başlat',
+    lastNote: 'Birinci test tamamlandı. İkinci test, sayfadan ayrıldığınızda sesin ne olduğunu ölçer. İkinci testi başlattığınızda bir uyarı sesi duyacaksınız. Bu sesi duyunca telefon ya da tabletteyseniz ekranı kilitleyin, bilgisayardaysanız başka bir uygulamaya ya da sekmeye geçin. Aynı sesi yeniden duyunca bu sayfaya geri dönün.',
+    lastNow: 'Şimdi telefon ya da tabletteyseniz ekranı kilitleyin, bilgisayardaysanız başka bir uygulamaya ya da sekmeye geçin. Uyarı sesini yeniden duyunca bu sayfaya geri dönün. Sesi duymazsanız yaklaşık 10 saniye sonra geri dönün.',
+    lastShort: 'Çok erken döndünüz. İkinci testi yeniden başlatın, bu kez yaklaşık 10 saniye sonra geri dönün.',
+    lastNever: 'Sayfadan ayrılmadığınız için ikinci test yapılamadı. İkinci testi yeniden başlatın.',
     privacy: 'Bu sayfa hiçbir bilgiyi kendiliğinden bir yere göndermez. Sonuçlar yalnızca siz kopyalayıp paylaştığınızda iletilir.',
     other: 'English'
   },
   en: {
     title: 'Sound timing check',
-    intro: 'This page looks into the Metronom and the recording drifting apart in Provarium’s player. It plays short test sounds the way Provarium plays recordings and measures when each one is really heard. Before you start, turn the sound up a little, and if you’re on a phone, make sure it isn’t on silent. It takes about a minute.',
+    intro: 'This page looks into the Metronom and the recording drifting apart in Provarium’s player. It plays short test sounds the way Provarium plays recordings and measures when each one is really heard. Before you start, turn the sound up a little, and if you’re on a phone, make sure it isn’t on silent. There are two tests, one after the other, about 2 minutes in all. In the second you’ll be asked to lock the screen or switch to another app for a few seconds.',
     model: 'Your device’s model', modelPh: 'e.g. iPhone 13, iPad Air, Galaxy S23, Windows PC',
     out: 'Where are you listening?', speaker: 'The device’s speaker', external: 'External speakers', wired: 'Wired headphones', bluetooth: 'Bluetooth headphones (AirPods etc.)',
     start: 'Start the test', again: 'Run it again',
     making: 'Making the test sounds', running: 'Testing. Please stay on this page meanwhile.',
-    done: 'Done. Copy the results and send them to whoever sent you this page.',
+    done: 'Both tests are done. Copy the results and send them to whoever sent you this page.',
     stopped: 'The test stopped: ',
     copy: 'Copy the results', share: 'Share', copied: 'The results are copied.',
     selected: 'The results are selected. Copy them with your device’s Copy.',
-    bgBtn: 'Start the extra test',
-    bgNote: 'The extra test measures what happens to the sound and the metronome when you leave the page. When you start it, you’ll hear a chime. Switch to another app or tab when you hear it, and come back to this page when you hear the same chime again.',
-    bgNow: 'Now switch to another app or tab. Come back to this page when you hear the chime again. If you don’t hear it, come back after about 10 seconds.',
-    bgDone: 'The extra test is done. Its result is added to the results above.',
-    bgShort: 'You came back too soon. Start the extra test again, and this time come back after about 10 seconds.',
-    bgNever: 'You didn’t leave the page, so the extra test couldn’t run. You can start it again.',
+    second: 'Start the second test',
+    lastNote: 'The first test is done. The second measures what happens to the sound when you leave the page. When you start it, you’ll hear a chime. When you hear it, lock the screen if you’re on a phone or tablet, or switch to another app or tab if you’re on a computer. Come back to this page when you hear the same chime again.',
+    lastNow: 'Now lock the screen if you’re on a phone or tablet, or switch to another app or tab if you’re on a computer. Come back to this page when you hear the chime again. If you don’t hear it, come back after about 10 seconds.',
+    lastShort: 'You came back too soon. Start the second test again, and this time come back after about 10 seconds.',
+    lastNever: 'You didn’t leave the page, so the second test couldn’t run. Start it again.',
     privacy: 'This page sends nothing anywhere by itself. The results go only where you copy and share them.',
     other: 'Türkçe'
   }
@@ -120,7 +112,8 @@ function words() {
   for (const el of document.querySelectorAll('[data-t]')) el.textContent = W(el.dataset.t);
   for (const el of document.querySelectorAll('[data-ph]')) el.placeholder = W(el.dataset.ph);
   $('lang').textContent = W('other');
-  if (ran) $('go').textContent = W('again');
+  $('go').textContent = W(stage === 1 ? 'second' : ran ? 'again' : 'start');
+  if (noteKey) $('lastnow').textContent = W(noteKey);
   fitWords();
 }
 // The example and the longest choice on one line in this device's own font: smaller only where they wouldn't fit.
@@ -140,7 +133,7 @@ function fitWords() {
 }
 addEventListener('resize', () => fitWords());
 const $ = id => document.getElementById(id);
-let ran = false;
+let ran = false, stage = 0, noteKey = '', keep = null;   // (stage 1: the first test done, the second waiting; keep: the own player kept for it)
 $('lang').onclick = () => { lang = lang === 'tr' ? 'en' : 'tr'; try { localStorage.setItem('sc-lang', lang); } catch (e) { /* none */ } words(); };
 words();
 
@@ -155,6 +148,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const ms = x => (x === null || x === undefined || !isFinite(x) ? '–' : Math.round(x * 1000) + ' ms');
 const med = a => { if (!a.length) return NaN; const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
 const mad = a => { const m = med(a); return med(a.map(x => Math.abs(x - m))); };
+const i16 = v => Math.max(-32767, Math.min(32767, Math.round(v * 32767)));
 function pcm() {
   const n = SR * LEN, d = new Float32Array(n);
   for (let i = 0; i < n; i++) d[i] = TONE_AMP * Math.sin(2 * Math.PI * TONE * i / SR);
@@ -167,15 +161,26 @@ function wavBlob(d) {
   const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
   str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
   v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
-  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, Math.round(d[i] * 32767))), true);
+  for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, i16(d[i]), true);
   return new Blob([buf], { type: 'audio/wav' });
 }
 // (MP3 too, as Provarium's recordings mostly are: lamejs, beside this page, with its licence)
 function mp3Blob(d) {
   if (typeof lamejs === 'undefined' || typeof lamejs.Mp3Encoder !== 'function') return null;
-  const enc = new lamejs.Mp3Encoder(1, SR, 128), n = d.length, i16 = new Int16Array(n), parts = [];
-  for (let i = 0; i < n; i++) i16[i] = Math.max(-32767, Math.min(32767, Math.round(d[i] * 32767)));
-  for (let i = 0; i < n; i += 1152) { const b = enc.encodeBuffer(i16.subarray(i, i + 1152)); if (b.length) parts.push(new Uint8Array(b)); }
+  const enc = new lamejs.Mp3Encoder(1, SR, 128), n = d.length, x = new Int16Array(n), parts = [];
+  for (let i = 0; i < n; i++) x[i] = i16(d[i]);
+  for (let i = 0; i < n; i += 1152) { const b = enc.encodeBuffer(x.subarray(i, i + 1152)); if (b.length) parts.push(new Uint8Array(b)); }
+  const e = enc.flush(); if (e.length) parts.push(new Uint8Array(e));
+  return new Blob(parts, { type: 'audio/mpeg' });
+}
+// A "part and rest" file as C would make it, also the page's own player's test sound: the part on the left (the tone
+// and the clicks), the rest on the right (the tone alone), stereo as MuseScore's MP3s are. Its first 1105 samples taken
+// off before encoding (LAME's own start), so it lines up with the WAV.
+function mp3Stereo(d) {
+  if (typeof lamejs === 'undefined' || typeof lamejs.Mp3Encoder !== 'function') return null;
+  const T = 1105, n = d.length - T, enc = new lamejs.Mp3Encoder(2, SR, 128), l = new Int16Array(n), r = new Int16Array(n), parts = [];
+  for (let i = 0; i < n; i++) { l[i] = i16(d[i + T]); r[i] = i16(TONE_AMP * Math.sin(2 * Math.PI * TONE * (i + T) / SR)); }
+  for (let i = 0; i < n; i += 1152) { const b = enc.encodeBuffer(l.subarray(i, i + 1152), r.subarray(i, i + 1152)); if (b.length) parts.push(new Uint8Array(b)); }
   const e = enc.flush(); if (e.length) parts.push(new Uint8Array(e));
   return new Blob(parts, { type: 'audio/mpeg' });
 }
@@ -191,17 +196,25 @@ const loaded = (els, t) => Promise.race([Promise.all(els.map(a => (a.readyState 
 
 // ---- listening to what reaches the sound's graph: each element on a channel of its own; the last channel hears clicks
 // made on the sound's own clock, to find how late this listener itself hears (taken off every measure)
-let ctx = null;
+let ctx = null, ctx44 = null;
 // (A click is heard where it rises over 0.06 and 40 % of that part's loudest so far; the test's tone, at 0.05, never
 // counts. Silence: under 0.003. peak: each part's loudest, for the results when nothing is measured.)
+// (Glitches, from version 3: the tone jumping by more than 0.025 from one sample to the next, which a sine at 220 Hz
+// and 0.05 never does (0.0016 at most); not within 10 ms after a click nor 15 ms before one, so the clicks themselves
+// and the MP3's smearing of them don't count. The iPad's stutter of 16 November is what it's for.)
 // (The listener: an AudioWorklet where there is one, each channel an input of its own. Without one, a ScriptProcessor
 // for each channel. One ScriptProcessor for all five channels never ran on a Samsung S23 Ultra's Chrome (15 November:
 // "0 blocks"), though one for a single channel did.)
+// (The page's own player, from version 3: what Provarium's own player would be (D in "Provarium on Safari"). Eight
+// parts, decoded a few seconds ahead in a worker and sent straight to it, mixed here and stretched for slower speeds
+// (WSOLA: overlapping windowed stretches of the mix, each picked where it best continues the last), then resampled to
+// the sound's own rate. A part short of sound holds all of them back, so they never come apart: that's an underrun.)
 const LISTEN_SRC = `class ScListen extends AudioWorkletProcessor {
   constructor(o) {
     super(); const n = o.processorOptions.chs;
     this.n = n; this.peak = new Float32Array(n); this.last = new Float64Array(n).fill(-1); this.ss = new Float64Array(n); this.hot = new Uint8Array(n);
-    this.k = 0; this.t0 = 0; this.live = true; this.out = { blocks: 0, on: [], low: [] };
+    this.prev = new Float32Array(n); this.lastHot = new Float64Array(n).fill(-1); this.cand = []; for (let c = 0; c < n; c++) this.cand.push([]);
+    this.k = 0; this.t0 = 0; this.live = true; this.out = { blocks: 0, on: [], low: [], gl: [] };
     this.port.onmessage = e => { if (e.data === 'stop') this.live = false; };
   }
   process(inputs) {
@@ -209,62 +222,205 @@ const LISTEN_SRC = `class ScListen extends AudioWorkletProcessor {
     for (let c = 0; c < this.n; c++) {
       const x = inputs[c] && inputs[c][0];
       if (!x) continue;
+      const cs = this.cand[c];
       for (let i = 0; i < x.length; i++) {
-        const a = Math.abs(x[i]); this.ss[c] += x[i] * x[i];
-        if (a > 0.06 && a > 0.4 * this.peak[c]) { this.hot[c] = 1; const t = (currentFrame + i) / sampleRate; if (t - this.last[c] > 0.15) { this.last[c] = t; this.out.on.push([c, t]); } }
+        const v = x[i], a = Math.abs(v), t = (currentFrame + i) / sampleRate, p = this.prev[c]; this.ss[c] += v * v;
+        if (a > 0.06) { this.lastHot[c] = t; while (cs.length && cs[cs.length - 1] > t - 0.015) cs.pop(); }
+        if (a > 0.06 && a > 0.4 * this.peak[c]) { this.hot[c] = 1; if (t - this.last[c] > 0.15) { this.last[c] = t; this.out.on.push([c, t]); } }
+        else if (a < 0.06 && Math.abs(p) < 0.06 && Math.abs(v - p) > 0.025 && t - this.lastHot[c] > 0.01 && (!cs.length || t - cs[cs.length - 1] > 0.003)) cs.push(t);
         if (a > this.peak[c]) this.peak[c] = a;
+        this.prev[c] = v;
       }
+      const now = (currentFrame + x.length) / sampleRate;
+      while (cs.length && cs[0] < now - 0.015) this.out.gl.push([c, cs.shift()]);
     }
     this.k += 128;
     if (this.k >= 256) {
       for (let c = 0; c < this.n; c++) { if (!this.hot[c]) this.out.low.push([c, this.t0, Math.sqrt(this.ss[c] / this.k) < 0.003, this.k / sampleRate]); this.ss[c] = 0; this.hot[c] = 0; }
       this.out.blocks++; this.k = 0;
-      if (this.out.blocks >= 4) { this.out.peak = Array.from(this.peak); this.port.postMessage(this.out); this.out = { blocks: 0, on: [], low: [] }; }
+      if (this.out.blocks >= 4) { this.out.peak = Array.from(this.peak); this.port.postMessage(this.out); this.out = { blocks: 0, on: [], low: [], gl: [] }; }
     }
     return this.live;
   }
 }
-registerProcessor('sc-listen', ScListen);`;
-let LISTEN = 'script', listenLoad = null;
-// (Asked for on the tap, ready before the first measure; a ScriptProcessor if it can't be. ?listen=script: that one.)
-function listenReady() {
-  if (listenLoad) return listenLoad;
-  const want = !/[?&]listen=script\b/.test(location.search) && ctx.audioWorklet && typeof AudioWorkletNode === 'function';
-  if (!want) return (listenLoad = Promise.resolve(LISTEN = 'script'));
-  const u = URL.createObjectURL(new Blob([LISTEN_SRC], { type: 'application/javascript' }));
-  return (listenLoad = ctx.audioWorklet.addModule(u).then(() => (LISTEN = 'worklet'), () => (LISTEN = 'script')).finally(() => URL.revokeObjectURL(u)));
+registerProcessor('sc-listen', ScListen);
+class Ring {
+  constructor(n) { this.n = n; this.L = new Float32Array(n); this.R = new Float32Array(n); this.s = 0; this.e = 0; }
+  get avail() { return this.e - this.s; }
+  push(l, r) { const j = this.e % this.n; this.L[j] = l; this.R[j] = r; this.e++; }
+  l(i) { return this.L[i % this.n]; }
+  r(i) { return this.R[i % this.n]; }
 }
-function capture(chs) {
-  const st = { on: [], low: [], blocks: 0, peak: new Array(chs).fill(0) };
-  for (let c = 0; c < chs; c++) { st.on.push([]); st.low.push([]); }
-  if (LISTEN === 'worklet') {
-    const node = new AudioWorkletNode(ctx, 'sc-listen', { numberOfInputs: chs, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'discrete', processorOptions: { chs } });
-    node.port.onmessage = e => { const m = e.data; st.blocks += m.blocks; for (const x of m.on) st.on[x[0]].push(x[1]); for (const x of m.low) st.low[x[0]].push([x[1], x[2], x[3]]); m.peak.forEach((v, c) => { st.peak[c] = v; }); };
-    const sink = ctx.createGain(); sink.gain.value = 0; node.connect(sink).connect(ctx.destination);
+class ScPlay extends AudioWorkletProcessor {
+  constructor(o) {
+    super();
+    const p = o.processorOptions;
+    this.P = p.parts; this.ratio = p.rate / sampleRate;
+    this.cap = Math.round(p.rate * 4); this.low = Math.round(p.rate * 2); this.ask = Math.round(p.rate);
+    this.L = []; this.R = []; this.w = []; this.r = []; this.pend = [];
+    for (let k = 0; k < this.P; k++) { this.L.push(new Float32Array(this.cap)); this.R.push(new Float32Array(this.cap)); this.w.push(0); this.r.push(0); this.pend.push(false); }
+    this.dec = null; this.on = false; this.speed = 1; this.under = 0; this.frames = 0; this.first = -1; this.gain = 1 / this.P;
+    this.M = new Ring(16384); this.S = new Ring(16384); this.fp = 0;
+    this.N = 1024; this.H = 512; this.D = 256; this.win = new Float32Array(this.N);
+    for (let i = 0; i < this.N; i++) this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / this.N);
+    this.oL = new Float32Array(this.H); this.oR = new Float32Array(this.H); this.prev = -1; this.ipos = 0;
+    this.port.onmessage = e => this.msg(e.data);
+  }
+  msg(m) {
+    if (m.type === 'port') { this.dec = m.port; this.dec.onmessage = e => this.take(e.data); for (let k = 0; k < this.P; k++) this.want(k); }
+    else if (m.type === 'play') this.on = true;
+    else if (m.type === 'stop') this.on = false;
+    else if (m.type === 'speed') { this.speed = m.v; this.prev = -1; }
+    else if (m.type === 'mark') this.port.postMessage({ type: 'mark', id: m.id, t: currentFrame / sampleRate, frames: this.frames, under: this.under, first: this.first });
+  }
+  want(k) { if (!this.dec || this.pend[k] || this.w[k] - this.r[k] >= this.low) return; this.pend[k] = true; this.dec.postMessage({ k, frames: this.ask }); }
+  take(d) {
+    const k = d.k, n = d.l.length, L = this.L[k], R = this.R[k];
+    for (let i = 0; i < n; i++) { const j = (this.w[k] + i) % this.cap; L[j] = d.l[i]; R[j] = d.r[i]; }
+    this.w[k] += n; this.pend[k] = false; this.want(k);
+  }
+  mix(n) {
+    for (let k = 0; k < this.P; k++) if (this.w[k] - this.r[k] < n) return false;
+    if (this.M.avail + n > this.M.n) return false;
+    for (let i = 0; i < n; i++) {
+      let l = 0, r = 0;
+      for (let k = 0; k < this.P; k++) { const j = (this.r[k] + i) % this.cap; l += this.L[k][j]; r += this.R[k][j]; }
+      this.M.push(l * this.gain, r * this.gain);
+    }
+    for (let k = 0; k < this.P; k++) { this.r[k] += n; this.want(k); }
+    return true;
+  }
+  produce() {
+    const M = this.M, S = this.S;
+    if (S.avail + this.H > S.n) return false;
+    if (this.speed === 1) {
+      if (!M.avail && !this.mix(256)) return false;
+      while (M.avail) { S.push(M.l(M.s), M.r(M.s)); M.s++; }
+      return true;
+    }
+    const N = this.N, H = this.H, D = this.D;
+    if (this.prev === -1) { this.ipos = M.s + D; this.prev = -2; this.oL.fill(0); this.oR.fill(0); }
+    const nom = Math.round(this.ipos), goal = this.prev >= 0 ? this.prev + H : -1;
+    const end = Math.max(nom + D + N, goal >= 0 ? goal + H : 0);
+    while (M.e < end) if (!this.mix(256)) return false;
+    let best = 0;
+    if (goal >= 0) {
+      let bv = -Infinity;
+      for (let k = -D; k <= D; k++) {
+        let s = 0; const a = nom + k;
+        for (let i = 0; i < H; i += 2) s += (M.l(a + i) + M.r(a + i)) * (M.l(goal + i) + M.r(goal + i));
+        if (s > bv) { bv = s; best = k; }
+      }
+    }
+    const at = nom + best, win = this.win;
+    for (let i = 0; i < H; i++) {
+      S.push(this.oL[i] + win[i] * M.l(at + i), this.oR[i] + win[i] * M.r(at + i));
+      this.oL[i] = win[i + H] * M.l(at + H + i); this.oR[i] = win[i + H] * M.r(at + H + i);
+    }
+    this.prev = at; this.ipos += H * this.speed;
+    M.s = Math.min(M.e, Math.max(M.s, Math.min(at + H, Math.round(this.ipos) - D)));
+    return true;
+  }
+  process(inputs, outputs) {
+    const o = outputs[0], oL = o[0], oR = o[1] || o[0], n = oL.length, S = this.S;
+    if (!this.on) return true;
+    const need = Math.ceil(this.fp + n * this.ratio) + 2;
+    while (S.avail < need) if (!this.produce()) break;
+    if (S.avail < need) { if (this.first >= 0) this.under++; return true; }
+    if (this.first < 0) this.first = currentFrame / sampleRate;
+    for (let i = 0; i < n; i++) {
+      const j = Math.floor(this.fp), f = this.fp - j, a = S.s + j;
+      oL[i] = S.l(a) + (S.l(a + 1) - S.l(a)) * f; oR[i] = S.r(a) + (S.r(a + 1) - S.r(a)) * f; this.fp += this.ratio;
+    }
+    const used = Math.floor(this.fp); S.s += used; this.fp -= used;
+    this.frames += n;
+    return true;
+  }
+}
+registerProcessor('sc-play', ScPlay);`;
+// The worker that decodes for the page's own player (mpg123 in WebAssembly, beside this page, with its licences): each
+// part's MP3 fed a few KB at a time, its sound sent straight to the player, never through this page.
+const DEC_SRC = `'use strict';
+let bytes = null, port = null, ms = 0, got = 0, rate = 44100, loops = 0;
+const decs = [], pos = [], chain = [], STEP = 4096;
+const fail = err => self.postMessage({ type: 'error', message: String((err && err.message) || err) });
+self.onmessage = async e => {
+  const m = e.data;
+  try {
+    if (m.type === 'init') {
+      importScripts(m.lib);
+      const lib = self['mpg123-decoder'];
+      bytes = new Uint8Array(m.bytes);
+      for (let k = 0; k < m.parts; k++) { const d = new lib.MPEGDecoder(); await d.ready; decs.push(d); pos.push(0); chain.push(Promise.resolve()); }
+      port = m.port;
+      port.onmessage = ev => { const q = ev.data; chain[q.k] = chain[q.k].then(() => feed(q.k, q.frames)).catch(fail); };
+      self.postMessage({ type: 'ready' });
+    } else if (m.type === 'stats') self.postMessage({ type: 'stats', ms, sec: got / rate, loops });
+  } catch (err) { fail(err); }
+};
+async function feed(k, frames) {
+  const Ls = [], Rs = []; let n = 0;
+  while (n < frames) {
+    if (pos[k] >= bytes.length) { await decs[k].reset(); pos[k] = 0; loops++; }
+    const t0 = performance.now(), r = decs[k].decode(bytes.subarray(pos[k], pos[k] + STEP));
+    ms += performance.now() - t0; pos[k] += STEP;
+    if (r.samplesDecoded) { Ls.push(r.channelData[0]); Rs.push(r.channelData[1] || r.channelData[0]); n += r.samplesDecoded; rate = r.sampleRate; }
+  }
+  got += n;
+  const l = new Float32Array(n), rr = new Float32Array(n); let o = 0;
+  for (let i = 0; i < Ls.length; i++) { l.set(Ls[i], o); rr.set(Rs[i], o); o += Ls[i].length; }
+  port.postMessage({ k, l, r: rr }, [l.buffer, rr.buffer]);
+}`;
+let LISTEN = 'script';
+const listenLoads = new Map();
+// (Asked for on the tap, ready before the first measure; a ScriptProcessor if it can't be. ?listen=script: that one.
+// Each sound (the device's own rate, and 44100 Hz) loads its own.)
+function listenReady(c) {
+  if (listenLoads.has(c)) return listenLoads.get(c);
+  const want = !/[?&]listen=script\b/.test(location.search) && c.audioWorklet && typeof AudioWorkletNode === 'function';
+  let p;
+  if (!want) p = Promise.resolve('script');
+  else { const u = URL.createObjectURL(new Blob([LISTEN_SRC], { type: 'application/javascript' })); p = c.audioWorklet.addModule(u).then(() => 'worklet', () => 'script').finally(() => URL.revokeObjectURL(u)); }
+  p = p.then(v => { c.scListen = v; if (c === ctx) LISTEN = v; return v; });
+  listenLoads.set(c, p);
+  return p;
+}
+function capture(chs, c) {
+  c = c || ctx;
+  const st = { on: [], low: [], gl: [], blocks: 0, peak: new Array(chs).fill(0) };
+  for (let k = 0; k < chs; k++) { st.on.push([]); st.low.push([]); st.gl.push([]); }
+  if (c.scListen === 'worklet') {
+    const node = new AudioWorkletNode(c, 'sc-listen', { numberOfInputs: chs, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: 'explicit', channelInterpretation: 'speakers', processorOptions: { chs } });
+    node.port.onmessage = e => { const m = e.data; st.blocks += m.blocks; for (const x of m.on) st.on[x[0]].push(x[1]); for (const x of m.low) st.low[x[0]].push([x[1], x[2], x[3]]); for (const x of m.gl) st.gl[x[0]].push(x[1]); m.peak.forEach((v, k) => { st.peak[k] = v; }); };
+    const sink = c.createGain(); sink.gain.value = 0; node.connect(sink).connect(c.destination);
     return { st, feed: (src, k) => src.connect(node, 0, k), stop: () => { node.port.postMessage('stop'); try { node.disconnect(); sink.disconnect(); } catch (e) { /* gone */ } } };
   }
   const sps = [];
-  for (let c = 0; c < chs; c++) {
-    const sp = ctx.createScriptProcessor(256, 1, 1); let last = -1;
+  for (let k = 0; k < chs; k++) {
+    const sp = c.createScriptProcessor(256, 1, 1); let last = -1, prev = 0, lastHot = -1; const cs = [];
     sp.onaudioprocess = ev => {
-      if (c === 0) st.blocks++;
-      let t0 = ev.playbackTime; if (!(t0 > 0)) t0 = ctx.currentTime;
+      if (k === 0) st.blocks++;
+      let t0 = ev.playbackTime; if (!(t0 > 0)) t0 = c.currentTime;
       const x = ev.inputBuffer.getChannelData(0), n = x.length, sr = ev.inputBuffer.sampleRate; let ss = 0, hot = false;
       for (let i = 0; i < n; i++) {
-        const a = Math.abs(x[i]); ss += x[i] * x[i];
-        if (a > 0.06 && a > 0.4 * st.peak[c]) { hot = true; const t = t0 + i / sr; if (t - last > 0.15) { last = t; st.on[c].push(t); } }
-        if (a > st.peak[c]) st.peak[c] = a;
+        const v = x[i], a = Math.abs(v), t = t0 + i / sr; ss += v * v;
+        if (a > 0.06) { lastHot = t; while (cs.length && cs[cs.length - 1] > t - 0.015) cs.pop(); }
+        if (a > 0.06 && a > 0.4 * st.peak[k]) { hot = true; if (t - last > 0.15) { last = t; st.on[k].push(t); } }
+        else if (a < 0.06 && Math.abs(prev) < 0.06 && Math.abs(v - prev) > 0.025 && t - lastHot > 0.01 && (!cs.length || t - cs[cs.length - 1] > 0.003)) cs.push(t);
+        if (a > st.peak[k]) st.peak[k] = a;
+        prev = v;
       }
-      if (!hot) st.low[c].push([t0, Math.sqrt(ss / n) < 0.003, n / sr]);
+      while (cs.length && cs[0] < t0 + n / sr - 0.015) st.gl[k].push(cs.shift());
+      if (!hot) st.low[k].push([t0, Math.sqrt(ss / n) < 0.003, n / sr]);
     };
-    sp.connect(ctx.destination); sps.push(sp);
+    sp.connect(c.destination); sps.push(sp);
   }
   return { st, feed: (src, k) => src.connect(sps[k]), stop: () => sps.forEach(sp => { try { sp.disconnect(); } catch (e) { /* gone */ } }) };
 }
 // The page's clock against each element's, sampled as often as the page allows.
-function sampler(els) {
+function sampler(els, c) {
   const pts = []; let on = true;
-  const take = () => { if (on) pts.push([ctx.currentTime, performance.now() / 1000].concat(els.map(a => a.currentTime))); };
+  const take = () => { if (on) pts.push([c.currentTime, performance.now() / 1000].concat(els.map(a => a.currentTime))); };
   const iv = setInterval(take, 4), raf = () => { take(); if (on) requestAnimationFrame(raf); }; requestAnimationFrame(raf);
   return { pts, stop: () => { on = false; clearInterval(iv); } };
 }
@@ -290,53 +446,78 @@ function lateness(onsets, at, c0, c1) {
 }
 const gaps = (low, c0, c1) => low.filter(x => x[1] && x[0] >= c0 && x[0] <= c1).reduce((s, x) => s + x[2], 0);
 function longestGap(low, c0, c1) { let best = 0, run = 0; for (const x of low) { if (x[0] < c0 || x[0] > c1) continue; if (x[1]) { run += x[2]; best = Math.max(best, run); } else run = 0; } return best; }
+// Glitches a second in [c0, c1]: the part with the most, and all of them together. (Not with the ScriptProcessor
+// listener: it drops sound of its own whenever the page is busy, so it hears glitches that aren't there.)
+function glitches(gl, c0, c1, c) {
+  if ((c || ctx).scListen !== 'worklet') return 'not measured (script listener)';
+  const sec = c1 - c0; if (!(sec > 0.5)) return '–';
+  const per = gl.map(a => a.filter(t => t >= c0 && t <= c1).length), most = Math.max(...per), all = per.reduce((s, x) => s + x, 0);
+  return (most / sec).toFixed(1) + '/s' + (gl.length > 1 ? ' (the worst part; ' + all + ' in all)' : '');
+}
+const show = r => (r ? ms(r.late) + ' (±' + Math.round(r.spread * 1000) + ', ' + r.got + '/' + r.of + ')' : 'not measured');
 
-// Four parts through the sound's graph, as Ayrık Partiler, MuseScore and MusicXML play: how late each is heard after
-// its own clock, how far apart they are, gaps; one put back in step while playing, as Provarium keeps parts together;
-// then at speed 0.75. Quiet: the same at speed 1 with nothing let out to the speaker (if it measures the same, a device
-// can be measured without being heard).
-async function routed(label, els, f0, f1, quiet) {
+// Parts through the sound's graph, as Ayrık Partiler, MuseScore and MusicXML play: how late each is heard after its own
+// clock, how far apart they are, gaps and glitches; one put back in step while playing, as Provarium keeps parts
+// together; then at speed 0.75. o.eight: eight parts at speed 1 only, as AC Revelations' stutter on an iPad (o.c: in
+// the sound at 44100 Hz). o.pr: one "part and rest" file, split and mixed again as C would play it.
+async function routed(label, els, f0, f1, o) {
+  o = o || {};
+  const c = o.c || ctx, eight = !!o.eight, pr = !!o.pr;
   if (!els) { lines.push(label + ': could not be made here'); return; }
   const N = els.length;
   await loaded(els, 8000);
-  const cap = capture(N + 1), out = ctx.createGain(); out.gain.value = quiet ? 0 : 0.35; out.connect(ctx.destination);
-  els.forEach((a, k) => { const s = ctx.createMediaElementSource(a); s.connect(out); cap.feed(s, k); });
-  const cal = [], c0 = ctx.currentTime + 0.25;
-  for (let j = 0; j < 6; j++) { const t = c0 + j * 0.37, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 2000; g.gain.setValueAtTime(0, 0); g.gain.setValueAtTime(0.8, t); g.gain.linearRampToValueAtTime(0, t + 0.006); o.connect(g); cap.feed(g, N); o.start(t); o.stop(t + 0.02); cal.push(t); }
+  const cap = capture(N + 1, c), out = c.createGain(); out.gain.value = eight ? 0.18 : 0.35; out.connect(c.destination);
+  els.forEach((a, k) => {
+    const s = c.createMediaElementSource(a);
+    if (pr) {
+      const sp = c.createChannelSplitter(2), mg = c.createChannelMerger(2), part = c.createGain(), rest = c.createGain(); rest.gain.value = 0.4;
+      s.connect(sp); sp.connect(part, 0); sp.connect(rest, 1);
+      for (const g of [part, rest]) { g.connect(mg, 0, 0); g.connect(mg, 0, 1); }
+      mg.connect(out);
+    } else s.connect(out);
+    cap.feed(s, k);
+  });
+  const cal = [], c0 = c.currentTime + 0.25;
+  for (let j = 0; j < 6; j++) { const t = c0 + j * 0.37, osc = c.createOscillator(), g = c.createGain(); osc.frequency.value = 2000; g.gain.setValueAtTime(0, 0); g.gain.setValueAtTime(0.8, t); g.gain.linearRampToValueAtTime(0, t + 0.006); osc.connect(g); cap.feed(g, N); osc.start(t); osc.stop(t + 0.02); cal.push(t); }
   await wait(2600);
-  const own = med(cal.map(t => { const x = cap.st.on[N].find(o => Math.abs(o - t) < 0.2); return x === undefined ? NaN : x - t; }).filter(isFinite));
-  const smp = sampler(els);
+  const own = med(cal.map(t => { const x = cap.st.on[N].find(v => Math.abs(v - t) < 0.2); return x === undefined ? NaN : x - t; }).filter(isFinite));
+  const smp = sampler(els, c);
   prog(f0);
-  const callC = ctx.currentTime;
+  const callC = c.currentTime;
   const res = await Promise.all(els.map(a => a.play().then(() => 'ok', e => (e && e.name) || 'refused')));
-  const playedC = ctx.currentTime;
-  await wait(quiet ? 5500 : 4200); prog(f0 + (f1 - f0) * (quiet ? 0.9 : 0.3));
-  const seekC = ctx.currentTime;
-  if (!quiet) els[1].currentTime = els[0].currentTime;
-  if (!quiet) { await wait(3200); prog(f0 + (f1 - f0) * 0.55); }
-  const rateC = ctx.currentTime;
-  if (!quiet) { els.forEach(a => { a.playbackRate = 0.75; }); await wait(6500); }
+  const playedC = c.currentTime;
+  await wait(eight ? 6000 : 4200); prog(f0 + (f1 - f0) * 0.3);
+  const seekC = c.currentTime, resync = !eight && !pr && N > 1;
+  if (resync) { els[1].currentTime = els[0].currentTime; await wait(3200); prog(f0 + (f1 - f0) * 0.55); }
+  const rateC = c.currentTime;
+  if (!eight) { els.forEach(a => { a.playbackRate = 0.75; }); await wait(6500); }
   prog(f1);
-  const endC = ctx.currentTime;
+  const endC = c.currentTime;
   els.forEach(a => a.pause()); smp.stop(); await wait(300);
   cap.stop(); out.disconnect();
-  const O = isFinite(own) ? own : 0, on = cap.st.on.map(a => a.map(t => t - O)), low = cap.st.low.map(a => a.map(x => [x[0] - O, x[1], x[2]]));
+  const O = isFinite(own) ? own : 0, on = cap.st.on.map(a => a.map(t => t - O)), low = cap.st.low.map(a => a.map(x => [x[0] - O, x[1], x[2]])), gl = cap.st.gl.slice(0, N).map(a => a.map(t => t - O));
   const first = on[0][0], startLate = first !== undefined ? first - callC - CLICKS[0] : NaN;
   const r1 = els.map((a, k) => { const at = fit(smp.pts, k, playedC + 0.4, seekC - 0.05); return at ? lateness(on[k], at, playedC + 0.4, seekC - 0.05) : null; });
-  const after = quiet ? null : (() => { const at = fit(smp.pts, 1, seekC + 0.8, rateC - 0.05); return at ? lateness(on[1], at, seekC + 0.8, rateC - 0.05) : null; })();
-  const r2 = quiet ? [] : els.map((a, k) => { const at = fit(smp.pts, k, rateC + 0.8, endC - 0.1); return at ? lateness(on[k], at, rateC + 0.8, endC - 0.1) : null; });
-  const apart = []; for (const t0 of on[0]) { if (t0 > seekC - 0.05) break; const same = on.slice(1, N).map(a => a.find(t => Math.abs(t - t0) < 0.25)); if (same.every(x => x !== undefined)) { const all = [t0].concat(same); apart.push(Math.max(...all) - Math.min(...all)); } }
-  const show = r => (r ? ms(r.late) + ' (±' + Math.round(r.spread * 1000) + ', ' + r.got + '/' + r.of + ')' : 'not measured');
-  lines.push(label + (quiet ? ' again with the sound off (nothing to the speaker):' : ' through the sound’s graph (as Ayrık Partiler, MuseScore, MusicXML):'));
+  const after = resync ? (() => { const at = fit(smp.pts, 1, seekC + 0.8, rateC - 0.05); return at ? lateness(on[1], at, seekC + 0.8, rateC - 0.05) : null; })() : null;
+  const r2 = eight ? [] : els.map((a, k) => { const at = fit(smp.pts, k, rateC + 0.8, endC - 0.1); return at ? lateness(on[k], at, rateC + 0.8, endC - 0.1) : null; });
+  const apart = []; for (const t0 of on[0]) { if (t0 > seekC - 0.05) break; const same = on.slice(1, N).map(a => a.find(t => Math.abs(t - t0) < 0.25)); if (N > 1 && same.every(x => x !== undefined)) { const all = [t0].concat(same); apart.push(Math.max(...all) - Math.min(...all)); } }
+  const g1 = isFinite(first) ? glitches(gl, first + 0.3, seekC, c) : '–';
+  if (eight) lines.push(label + ', eight parts through the sound’s graph at ' + c.sampleRate + ' Hz (as AC Revelations):');
+  else if (pr) lines.push(label + ' through the sound’s graph (as C would play it):');
+  else lines.push(label + ' through the sound’s graph (as Ayrık Partiler, MuseScore, MusicXML):');
   if (res.some(x => x !== 'ok')) lines.push('  play: ' + res.join(', '));
   lines.push('  ▶ to the first sound: ' + ms(startLate) + ' later than it should be');
-  lines.push('  heard after the page’s clock, at speed 1: ' + r1.map(show).join(' · '));
+  if (eight) {
+    const got = r1.filter(Boolean).map(r => r.late);
+    lines.push('  heard after the page’s clock, at speed 1: ' + (got.length ? ms(Math.min(...got)) + ' to ' + ms(Math.max(...got)) + ' (' + got.length + ' of 8 parts measured)' : 'not measured'));
+  } else lines.push('  heard after the page’s clock, at speed 1: ' + r1.map(show).join(' · '));
   // (Nothing measured: what reached the listener, to tell a silent part from one too quiet or not playing.)
   if (r1.every(x => !x)) lines.push('  what reached it: ' + cap.st.blocks + ' blocks, loudest ' + cap.st.peak.slice(0, N).map(v => v.toFixed(3)).join(' · ') + ', clock clicks ' + (cap.st.peak[N] || 0).toFixed(3));
-  lines.push('  the 4 parts apart: ' + ms(med(apart)) + ' (most ' + ms(apart.length ? Math.max(...apart) : NaN) + ')');
-  if (quiet) { lines.push('  gaps at speed 1: ' + ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN)); return; }
-  lines.push('  gaps at speed 1: ' + ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN) + ' · one part re-synced: gap ' + ms(longestGap(low[1], seekC, seekC + 1)) + ', then ' + show(after));
-  lines.push('  at speed 0.75: ' + r2.map(show).join(' · ') + ' · gaps ' + ms(gaps(low[0], rateC + 0.3, endC)));
+  if (N > 1) lines.push('  the ' + N + ' parts apart: ' + ms(med(apart)) + ' (most ' + ms(apart.length ? Math.max(...apart) : NaN) + ')');
+  const gap1 = ms(isFinite(first) ? gaps(low[0], first - 0.9, seekC) : NaN);
+  if (eight) { lines.push('  gaps at speed 1: ' + gap1 + ' · glitches ' + g1); return; }
+  lines.push('  gaps at speed 1: ' + gap1 + ' · glitches ' + g1 + (resync ? ' · one part re-synced: gap ' + ms(longestGap(low[1], seekC, seekC + 1)) + ', then ' + show(after) : ''));
+  lines.push('  at speed 0.75: ' + r2.map(show).join(' · ') + ' · gaps ' + ms(gaps(low[0], rateC + 0.3, endC - 0.05)) + ' · glitches ' + glitches(gl, rateC + 0.3, endC - 0.05, c));
 }
 // The recording on its own, as Hazır Kayıt plays: how long until it moves, and how its clock steps.
 async function plain(label, a) {
@@ -348,44 +529,139 @@ async function plain(label, a) {
   a.pause();
   lines.push(label + ' on its own (as Hazır Kayıt): ' + (r === 'ok' ? 'moves ' + ms((firstP - callP) / 1000) + ' after ▶ · its clock steps every ' + ms(med(steps)) : 'play: ' + r));
 }
+// The page's own player (D): eight parts, at speed 1 and 0.75. Its sound never goes through an audio element, so there
+// is no other clock to be late against: what matters is whether the decoding keeps up (underruns), gaps and glitches,
+// and how soon it starts. Kept for the second test.
+async function own(f0, f1, bytes) {
+  const label = 'Own player (eight parts decoded a few seconds ahead and mixed by the page, as D would play)';
+  if (ctx.scListen !== 'worklet') { lines.push(label + ': no AudioWorklet here'); return null; }
+  if (!bytes) { lines.push(label + ': the test sound could not be made'); return null; }
+  let worker;
+  try { worker = new Worker(URL.createObjectURL(new Blob([DEC_SRC], { type: 'application/javascript' }))); } catch (e) { lines.push(label + ': no worker here'); return null; }
+  const t0 = performance.now(), ch = new MessageChannel();
+  const ready = new Promise((ok, bad) => { worker.onmessage = e => { if (e.data.type === 'ready') ok(); else if (e.data.type === 'error') bad(new Error(e.data.message)); }; worker.onerror = ev => bad(new Error(ev.message || 'the worker failed')); });
+  worker.postMessage({ type: 'init', lib: new URL('mpg123-decoder.min.js', location.href).href, bytes: bytes.slice(0), parts: 8, port: ch.port1 }, [ch.port1]);
+  try { await Promise.race([ready, wait(15000).then(() => { throw new Error('the decoder did not load'); })]); } catch (e) { lines.push(label + ': ' + e.message); worker.terminate(); return null; }
+  let node;
+  try { node = new AudioWorkletNode(ctx, 'sc-play', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { parts: 8, rate: SR } }); } catch (e) { lines.push(label + ': ' + (e && e.message || e)); worker.terminate(); return null; }
+  const marks = new Map();
+  node.port.onmessage = e => { if (e.data.type === 'mark') { const f = marks.get(e.data.id); if (f) { marks.delete(e.data.id); f(e.data); } } };
+  const mark = id => new Promise(ok => { marks.set(id, ok); node.port.postMessage({ type: 'mark', id }); setTimeout(() => { if (marks.has(id)) { marks.delete(id); ok(null); } }, 3000); });
+  let errs = []; worker.onmessage = e => { if (e.data.type === 'error') errs.push(e.data.message); };
+  node.port.postMessage({ type: 'port', port: ch.port2 }, [ch.port2]);
+  const out = ctx.createGain(); out.gain.value = 0.35; node.connect(out).connect(ctx.destination);
+  const cap = capture(1); cap.feed(node, 0);
+  await wait(1500);   // (the first seconds decoded, as when a piece is opened)
+  const readyMs = performance.now() - t0;
+  prog(f0 + (f1 - f0) * 0.2);
+  const callC = ctx.currentTime; node.port.postMessage({ type: 'play' });
+  await wait(5000);
+  const m1 = await mark('speed-1');
+  const rateC = ctx.currentTime; node.port.postMessage({ type: 'speed', v: 0.75 });
+  prog(f0 + (f1 - f0) * 0.6);
+  await wait(6500);
+  const m2 = await mark('speed-075');
+  const endC = ctx.currentTime;
+  node.port.postMessage({ type: 'stop' });
+  const ds = await new Promise(ok => { worker.onmessage = e => { if (e.data.type === 'stats') ok(e.data); else if (e.data.type === 'error') errs.push(e.data.message); }; worker.postMessage({ type: 'stats' }); setTimeout(() => ok(null), 2000); });
+  await wait(300); cap.stop();
+  prog(f1);
+  const first = m1 && m1.first >= 0 ? m1.first : NaN, low = cap.st.low[0];
+  lines.push(label + ':');
+  if (errs.length) lines.push('  decoder: ' + errs.slice(0, 2).join(' · '));
+  lines.push('  decoding: ' + (ds && ds.sec && ds.ms ? Math.round(ds.sec / (ds.ms / 1000)) + '× faster than it plays, one part · all 8 at speed 1: ' + (800 * ds.ms / 1000 / ds.sec).toFixed(1) + '% of one core' : 'not measured') + ' · ready to play ' + ms(readyMs / 1000) + ' after it was asked');
+  lines.push('  ▶ to the first sound: ' + ms(first - callC));
+  lines.push('  at speed 1: ' + (m1 ? m1.under : '–') + ' underruns · gaps ' + ms(isFinite(first) ? gaps(low, first + 0.2, rateC - 0.05) : NaN) + ' · glitches ' + (isFinite(first) ? glitches([cap.st.gl[0]], first + 0.3, rateC) : '–'));
+  lines.push('  at speed 0.75: ' + (m1 && m2 ? m2.under - m1.under : '–') + ' underruns · gaps ' + ms(gaps(low, rateC + 0.3, endC - 0.05)) + ' · glitches ' + glitches([cap.st.gl[0]], rateC + 0.3, endC - 0.05));
+  return { worker, node, out, mark, errs };
+}
 const urls = [];
+// (The screen kept on through the rounds, from version 3: the test now takes about two minutes, longer than many
+// phones wait before they lock by themselves (Safari 16.4 and later). Let go of when the first ends: the second asks for the
+// screen to be locked. Where it can't be kept on and the page goes out of sight anyway, the log says so.)
+let awake = null, inLast = false, hiddenRounds = 0;
+function keepAwake() { try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(l => { awake = l; }, () => { awake = null; }); } catch (e) { awake = null; } }
+function letSleep() { try { if (awake) awake.release(); } catch (e) { /* gone */ } awake = null; }
+document.addEventListener('visibilitychange', () => { if (document.hidden && busy && !inLast) hiddenRounds++; });
 // (The test starts only once the device is named: results without it can't be told apart. Ahmet's of 15 November.)
 let busy = false;
 const ready = () => { $('go').disabled = busy || !$('model').value.trim(); };
 $('model').addEventListener('input', ready);
 addEventListener('pageshow', ready);   // (a name the browser kept on coming back to the page)
 ready();
+const note = k => { noteKey = k; $('lastnow').textContent = k ? W(k) : ''; $('lastnow').hidden = !k; };
 $('go').onclick = () => {
   if (busy || !$('model').value.trim()) return;
-  busy = true; ready(); $('out').hidden = true; $('copy').hidden = true; $('share').hidden = true; $('bgbox').hidden = true; lines.length = 0; prog(0);
+  if (stage === 1) { second(); return; }
+  busy = true; ready(); $('out').hidden = true; $('copy').hidden = true; $('share').hidden = true; note(''); lines.length = 0; prog(0);
   say(W('making'));
-  // (Everything that sounds made and unlocked on the tap itself, before any wait.)
+  // (Everything that sounds made and unlocked on the tap itself, before any wait: both sounds, every element.)
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
-  ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-  const resumed = ctx.resume().then(listenReady);
+  keepAwake(); inLast = false; hiddenRounds = 0;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  ctx = ctx || new AC();
+  if (!ctx44 && ctx.sampleRate !== 44100) { try { ctx44 = new AC({ sampleRate: 44100 }); } catch (e) { ctx44 = null; } }
+  const resumed = Promise.all([ctx.resume().then(() => listenReady(ctx)), ctx44 ? ctx44.resume().then(() => listenReady(ctx44)).catch(() => null) : null]);
   urls.forEach(u => URL.revokeObjectURL(u)); urls.length = 0;
   const d = pcm(), wv = URL.createObjectURL(wavBlob(d)); urls.push(wv);
   let mp = null; try { const b = mp3Blob(d); if (b) { mp = URL.createObjectURL(b); urls.push(mp); } } catch (e) { mp = null; }
-  const solo = element(wv), wavEls = [0, 1, 2, 3].map(() => element(wv)), mp3Els = mp ? [0, 1, 2, 3].map(() => element(mp)) : null, quietEls = [0, 1, 2, 3].map(() => element(wv));
-  unlock([solo].concat(wavEls, mp3Els || [], quietEls));
-  run(resumed, solo, wavEls, mp3Els, quietEls);
+  let st = null; try { st = mp3Stereo(d); } catch (e) { st = null; }
+  const stUrl = st ? URL.createObjectURL(st) : null; if (stUrl) urls.push(stUrl);
+  const E = {
+    solo: element(wv), wav: [0, 1, 2, 3].map(() => element(wv)), mp3: mp ? [0, 1, 2, 3].map(() => element(mp)) : null,
+    eight: mp ? [0, 1, 2, 3, 4, 5, 6, 7].map(() => element(mp)) : null, eight44: mp && ctx44 ? [0, 1, 2, 3, 4, 5, 6, 7].map(() => element(mp)) : null,
+    pr: stUrl ? [element(stUrl)] : null
+  };
+  unlock([E.solo].concat(E.wav, E.mp3 || [], E.eight || [], E.eight44 || [], E.pr || []));
+  run(resumed, E, st);
 };
-async function run(resumed, solo, wavEls, mp3Els, quietEls) {
+async function run(resumed, E, st) {
+  let op = null;
   try {
     await resumed;
+    const bytes = st ? await st.arrayBuffer() : null;
     say(W('running'));
-    lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC');
+    lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC · version 3');
     lines.push('Device: ' + ($('model').value.trim() || '(not given)') + ' · listening on: ' + $('route').value);
     lines.push('Browser: ' + navigator.userAgent);
-    lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state + ' · listener ' + LISTEN);
-    await plain('Plain', solo); prog(0.05);
-    await routed('WAV', wavEls, 0.05, 0.42);
-    await routed('MP3', mp3Els, 0.42, 0.8);
-    await routed('WAV', quietEls, 0.8, 0.98, true);
-    prog(1); say(W('done'));
-  } catch (e) { lines.push('Stopped: ' + (e && e.message || e)); say(W('stopped') + (e && e.message || e), true); }
-  ran = true;
-  $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share; $('bgbox').hidden = false; $('bgstatus').hidden = true;
+    lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state + ' · listener ' + LISTEN + ' · screen kept on ' + (awake ? 'yes' : navigator.wakeLock ? 'refused' : 'no'));
+    await plain('Plain', E.solo); prog(0.04);
+    await routed('WAV', E.wav, 0.04, 0.2);
+    await routed('MP3', E.mp3, 0.2, 0.36);
+    await routed('MP3', E.eight, 0.36, 0.48, { eight: true });
+    if (ctx44 && ctx44.state === 'running') await routed('MP3', E.eight44, 0.48, 0.6, { eight: true, c: ctx44 });
+    else lines.push('MP3, eight parts at 44100 Hz: ' + (ctx.sampleRate === 44100 ? 'the sound runs at 44100 Hz already' : 'that sound could not be made here' + (ctx44 ? ' (' + ctx44.state + ')' : '')));
+    await routed('Part and rest (one stereo MP3, its start trimmed)', E.pr, 0.6, 0.78, { pr: true });
+    op = await own(0.78, 1, bytes);
+    if (hiddenRounds) lines.push('Note: the page went out of sight ' + hiddenRounds + ' time' + (hiddenRounds > 1 ? 's' : '') + ' during the first test (the screen turned off?), so its rounds may be off.');
+  } catch (e) {
+    lines.push('Stopped: ' + (e && e.message || e)); say(W('stopped') + (e && e.message || e), true);
+    keep = op; finish(); return;
+  }
+  // (The first test done: the same button starts the second, which needs the person ready to leave the page.)
+  keep = op; stage = 1; busy = false; letSleep();
+  $('status').hidden = true; $('barbox').hidden = true;
+  note('lastNote'); $('go').textContent = W('second'); ready();
+  try { $('go').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { $('go').scrollIntoView(); }
+}
+// The second test, from its own tap. Done only once the page was left for 5 s or more and came back; otherwise it says
+// why and waits for the button again. Then the one log.
+async function second() {
+  busy = true; ready(); inLast = true;
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* none */ }
+  ctx.resume().catch(() => null);
+  note('lastNow');
+  let r = 'ok';
+  try { r = await last(keep); } catch (e) { lines.push('Stopped in the second test: ' + (e && e.message || e)); }
+  if (r !== 'ok') { note(r === 'never' ? 'lastNever' : 'lastShort'); busy = false; ready(); return; }
+  stage = 0; note(''); finish(); say(W('done'));
+}
+function finish() {
+  const op = keep; keep = null; stage = 0; inLast = false;
+  if (op) { try { op.node.port.postMessage({ type: 'stop' }); op.node.disconnect(); op.out.disconnect(); } catch (e) { /* gone */ } op.worker.terminate(); }
+  if (ctx44) { ctx44.close().catch(() => null); ctx44 = null; listenLoads.forEach((v, c) => { if (c !== ctx) listenLoads.delete(c); }); }
+  ran = true; letSleep(); $('barbox').hidden = true;
+  $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share;
   busy = false; ready(); $('go').textContent = W('again');
 }
 $('copy').onclick = async () => {
@@ -394,7 +670,10 @@ $('copy').onclick = async () => {
   catch (e) { const r = document.createRange(); r.selectNodeContents($('out')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say(W('selected')); }
 };
 $('share').onclick = async () => { try { await navigator.share({ text: $('out').textContent }); } catch (e) { /* closed */ } };
-// ---- out of sight: does the page keep time (timers, frames, the sound) while another app is in front?
+// ---- the second test (until version 2 an extra test after the results, run by testers as a second log; now the same
+// button starts it once the first is done, and the one log comes after it): the page left (the screen locked, another
+// app in front) while the page's own player plays. Does the sound, its decoding, the page's
+// timers and screen go on? Without the own player: one recording through the graph, as before.
 // The chime: two bright bell notes, rising, nothing like the test's own sound (a low tone and clicks). Once to say "leave
 // now", and again (every 5 s from 10 s after leaving) to say "come back". Set ahead on the sound's own clock, so it rings
 // even where the page's timers are stopped, as long as the device keeps the sound going. Its nodes given back, to stop.
@@ -410,52 +689,54 @@ function chime(at) {
   return nodes;
 }
 function hush(nodes) { for (const n of nodes) { try { if (n.stop) n.stop(); } catch (e) { /* done already */ } try { n.disconnect(); } catch (e) { /* none */ } } }
-// Its own line under its button, where the person is looking: what to do now, then how it went. (The bar above is the
-// main test's: put away meanwhile.)
-function step(text, now) {
-  const el = $('bgstatus'); el.textContent = text; el.className = now ? 'now' : ''; el.hidden = false;
-  try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { el.scrollIntoView(); }
+async function last(op) {
+  letSleep();
+  // (What plays meanwhile: the own player at speed 1, else one recording looped through the graph. Started on the tap.)
+  let el = null, url = null, cap = null, g = null, played = null;
+  if (op) { op.node.port.postMessage({ type: 'speed', v: 1 }); op.node.port.postMessage({ type: 'play' }); }
+  else {
+    url = URL.createObjectURL(wavBlob(pcm())); el = element(url); el.loop = true;
+    cap = capture(1); const s = ctx.createMediaElementSource(el); g = ctx.createGain(); g.gain.value = 0.35; s.connect(g).connect(ctx.destination); cap.feed(s, 0);
+    played = el.play().catch(e => e);
+  }
+  try { $('lastnow').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { $('lastnow').scrollIntoView(); }
+  if (played) await played;
+  const st = await away(op, el, cap);
+  if (op) op.node.port.postMessage({ type: 'stop' });
+  if (el) { el.pause(); cap.stop(); g.disconnect(); URL.revokeObjectURL(url); }
+  if (!st.backAt) return 'never';
+  const sec = (st.backAt - st.hidAt) / 1000;
+  if (sec < 5) return 'short';
+  const base = 'Out of sight for ' + sec.toFixed(1) + ' s' + (op ? ' (the page’s own player playing)' : '') + ': timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–');
+  if (op) {
+    const a = await st.mh, b = await st.mb;
+    lines.push(base + ' · ' + (a && b ? 'the own player played ' + ((b.frames - a.frames) / ctx.sampleRate).toFixed(1) + ' s of it, ' + (b.under - a.under) + ' underruns' : 'the own player didn’t answer'));
+  } else {
+    const heard = (st.blocksBack - st.blocksAt) * 256 / ctx.sampleRate;
+    lines.push(base + ' · recording ' + (st.paused ? 'paused by the device' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
+  }
+  return 'ok';
 }
-$('bg').onclick = () => {
-  busy = true; ready(); $('bg').disabled = true; $('barbox').hidden = true; $('bgstatus').hidden = true;
-  const url = URL.createObjectURL(wavBlob(pcm())), a = element(url); a.loop = true;
-  ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-  ctx.resume();
-  const cap = capture(1), s = ctx.createMediaElementSource(a), g = ctx.createGain(); g.gain.value = 0.35; s.connect(g).connect(ctx.destination); cap.feed(s, 0);
-  const played = a.play();
-  chime(ctx.currentTime + 0.05);
-  away(url, a, cap, g, played);
-};
-async function away(url, a, cap, g, played) {
-  const st = { hidAt: 0, backAt: 0, ticks: 0, frames: 0, states: new Set(), paused: false, blocksAt: 0, blocksBack: 0 };
+// One try: a minute to leave, then as long as they're away, up to five minutes; the chime to go, and to come back.
+async function away(op, el, cap) {
+  const st = { hidAt: 0, backAt: 0, ticks: 0, frames: 0, states: new Set(), paused: false, blocksAt: 0, blocksBack: 0, mh: null, mb: null };
   let calls = [];
-  const iv = setInterval(() => { if (document.hidden) { st.ticks++; st.states.add(ctx.state); if (a.paused) st.paused = true; } }, 100);
+  const go = chime(ctx.currentTime + 0.05);
+  const iv = setInterval(() => { if (document.hidden) { st.ticks++; st.states.add(ctx.state); if (el && el.paused) st.paused = true; } }, 100);
   const raf = () => { if (document.hidden) st.frames++; if (!st.backAt) requestAnimationFrame(raf); }; requestAnimationFrame(raf);
   const vis = () => {
-    if (document.hidden && !st.hidAt) { st.hidAt = performance.now(); st.blocksAt = cap.st.blocks; const t = ctx.currentTime; calls = [10, 15, 20, 25, 30].flatMap(s => chime(t + s)); }
-    else if (!document.hidden && st.hidAt && !st.backAt) { st.backAt = performance.now(); st.blocksBack = cap.st.blocks; hush(calls); }
+    if (document.hidden && !st.hidAt) { st.hidAt = performance.now(); if (op) st.mh = op.mark('hid'); if (cap) st.blocksAt = cap.st.blocks; const t = ctx.currentTime; calls = [10, 15, 20, 25, 30].flatMap(s => chime(t + s)); }
+    else if (!document.hidden && st.hidAt && !st.backAt) { st.backAt = performance.now(); if (op) st.mb = op.mark('back'); if (cap) st.blocksBack = cap.st.blocks; hush(calls); }
   };
   document.addEventListener('visibilitychange', vis);
-  await played.catch(e => e);
-  step(W('bgNow'), true);
-  // (A minute to leave. Once gone, as long as they're away, up to five minutes.)
   const leaveBy = performance.now() + 60000;
   while (!st.hidAt && performance.now() < leaveBy) await wait(200);
   if (st.hidAt) { const backBy = performance.now() + 300000; while (!st.backAt && performance.now() < backBy) await wait(200); }
-  if (st.hidAt && !st.backAt) { st.backAt = performance.now(); st.blocksBack = cap.st.blocks; }
-  hush(calls);
+  if (st.hidAt && !st.backAt) { st.backAt = performance.now(); if (op) st.mb = op.mark('back'); if (cap) st.blocksBack = cap.st.blocks; }
+  hush(calls); hush(go);
   await wait(500);
-  clearInterval(iv); document.removeEventListener('visibilitychange', vis); a.pause(); cap.stop(); g.disconnect(); URL.revokeObjectURL(url);
-  let sec = 0;
-  if (!st.backAt) lines.push('Out of sight: the page was never left');
-  else {
-    sec = (st.backAt - st.hidAt) / 1000;
-    const heard = (st.blocksBack - st.blocksAt) * 256 / ctx.sampleRate;
-    lines.push('Out of sight for ' + sec.toFixed(1) + ' s: timers ' + (st.ticks / sec).toFixed(1) + '/s (10 when not slowed) · frames ' + st.frames + ' · sound’s state ' + ([...st.states].join(', ') || '–') + ' · recording ' + (st.paused ? 'paused by the device' : 'went on') + ' · the sound’s graph ran ' + heard.toFixed(1) + ' s of it');
-  }
-  $('out').textContent = lines.join('\n'); $('out').hidden = false; $('copy').hidden = false; $('share').hidden = !navigator.share;
-  busy = false; ready(); $('bg').disabled = false;
-  step(W(!st.backAt ? 'bgNever' : sec < 5 ? 'bgShort' : 'bgDone'));
+  clearInterval(iv); document.removeEventListener('visibilitychange', vis);
+  return st;
 }
 </script>
 </body>
