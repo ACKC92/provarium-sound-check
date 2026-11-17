@@ -217,8 +217,10 @@ const pace = r => (!isFinite(r) ? '–' : r > 0.9 && r < 1.1 ? 'moving' : r < 0.
 // "0 blocks"), though one for a single channel did.)
 // (The page's own player, from version 3: what Provarium's own player would be (D in "Provarium on Safari"). Eight
 // parts, decoded a few seconds ahead in a worker and sent straight to it, mixed here and stretched for slower speeds
-// (WSOLA: overlapping windowed stretches of the mix, each picked where it best continues the last), then resampled to
-// the sound's own rate. A part short of sound holds all of them back, so they never come apart: that's an underrun.)
+// (from version 3.2 by Signalsmith Stretch, as Provarium's own player from r6.67: fed as it goes, its work spread over
+// its blocks; WSOLA before), then resampled to the sound's own rate. A part short of sound holds all of them back, so
+// they never come apart: that's an underrun. How long the mixer works on each block of the sound is added up (by the
+// millisecond clock, which over thousands of blocks comes out right), to say how much of the sound's time it takes.)
 const LISTEN_SRC = `class ScListen extends AudioWorkletProcessor {
   constructor(o) {
     super(); const n = o.processorOptions.chs;
@@ -270,18 +272,26 @@ class ScPlay extends AudioWorkletProcessor {
     this.L = []; this.R = []; this.w = []; this.r = []; this.pend = [];
     for (let k = 0; k < this.P; k++) { this.L.push(new Float32Array(this.cap)); this.R.push(new Float32Array(this.cap)); this.w.push(0); this.r.push(0); this.pend.push(false); }
     this.dec = null; this.on = false; this.speed = 1; this.under = 0; this.frames = 0; this.first = -1; this.gain = 1 / this.P;
-    this.M = new Ring(16384); this.S = new Ring(16384); this.fp = 0;
-    this.N = 1024; this.H = 512; this.D = 256; this.win = new Float32Array(this.N);
-    for (let i = 0; i < this.N; i++) this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / this.N);
-    this.oL = new Float32Array(this.H); this.oR = new Float32Array(this.H); this.prev = -1; this.ipos = 0;
+    this.M = new Ring(32768); this.S = new Ring(16384); this.fp = 0; this.busy = 0;
+    this.ss = null; this.ssBad = ''; this.fed = -1; this.carry = 0;
+    const F = globalThis.ProvariumStretchFactory;
+    if (typeof F !== 'function') this.ssBad = 'not loaded';
+    else F().then(mod => {
+      try {
+        mod._configure(2, Math.round(0.12 * p.rate), Math.round(0.03 * p.rate), 1); mod._reset();
+        mod._setTransposeSemitones(0, 8000 / p.rate); mod._setFormantSemitones(0, 0); mod._setFormantBase(0);
+        const inL = mod._inputLatency(), outL = mod._outputLatency(), cap = inL + outL + 512;
+        this.ss = { mod, inL, outL, cap, ptr: mod._setBuffers(2, cap) };
+      } catch (e) { this.ssBad = String(e && e.message || e); }
+    }, e => { this.ssBad = String(e && e.message || e); });
     this.port.onmessage = e => this.msg(e.data);
   }
   msg(m) {
     if (m.type === 'port') { this.dec = m.port; this.dec.onmessage = e => this.take(e.data); for (let k = 0; k < this.P; k++) this.want(k); }
     else if (m.type === 'play') this.on = true;
     else if (m.type === 'stop') this.on = false;
-    else if (m.type === 'speed') { this.speed = m.v; this.prev = -1; }
-    else if (m.type === 'mark') this.port.postMessage({ type: 'mark', id: m.id, t: currentFrame / sampleRate, frames: this.frames, under: this.under, first: this.first });
+    else if (m.type === 'speed') { this.speed = m.v; this.fed = -1; }
+    else if (m.type === 'mark') this.port.postMessage({ type: 'mark', id: m.id, t: currentFrame / sampleRate, frames: this.frames, under: this.under, first: this.first, busy: this.busy, ss: this.ss ? 'ok' : this.ssBad || 'not yet made' });
   }
   want(k) { if (!this.dec || this.pend[k] || this.w[k] - this.r[k] >= this.low) return; this.pend[k] = true; this.dec.postMessage({ k, frames: this.ask }); }
   take(d) {
@@ -308,30 +318,37 @@ class ScPlay extends AudioWorkletProcessor {
       while (M.avail) { S.push(M.l(M.s), M.r(M.s)); M.s++; }
       return true;
     }
-    const N = this.N, H = this.H, D = this.D;
-    if (this.prev === -1) { this.ipos = M.s + D; this.prev = -2; this.oL.fill(0); this.oR.fill(0); }
-    const nom = Math.round(this.ipos), goal = this.prev >= 0 ? this.prev + H : -1;
-    const end = Math.max(nom + D + N, goal >= 0 ? goal + H : 0);
-    while (M.e < end) if (!this.mix(256)) return false;
-    let best = 0;
-    if (goal >= 0) {
-      let bv = -Infinity;
-      for (let k = -D; k <= D; k++) {
-        let s = 0; const a = nom + k;
-        for (let i = 0; i < H; i += 2) s += (M.l(a + i) + M.r(a + i)) * (M.l(goal + i) + M.r(goal + i));
-        if (s > bv) { bv = s; best = k; }
-      }
+    const ss = this.ss;
+    if (!ss) return false;   // (no stretcher: nothing at this speed, which the log says)
+    const mod = ss.mod, buf = () => (mod.HEAPF32 || mod.HEAP8).buffer;
+    if (this.fed < 0) {
+      // (Into the stretching: given what's just before the next sample of the mix (seek), then fed from there on. Its
+      // first 60 ms rise from nothing, as a new start of it does; the log measures from 0.3 s after the change.)
+      const B = ss.inL + ss.outL, E = M.s + B;
+      while (M.e < E + 512) if (!this.mix(256)) return false;
+      mod._reset();
+      const iL = new Float32Array(buf(), ss.ptr, ss.cap), iR = new Float32Array(buf(), ss.ptr + ss.cap * 4, ss.cap);
+      for (let i = 0; i < B; i++) { iL[i] = M.l(M.s + i); iR[i] = M.r(M.s + i); }
+      mod._seek(B, this.speed); this.fed = E; this.carry = 0;
     }
-    const at = nom + best, win = this.win;
-    for (let i = 0; i < H; i++) {
-      S.push(this.oL[i] + win[i] * M.l(at + i), this.oR[i] + win[i] * M.r(at + i));
-      this.oL[i] = win[i + H] * M.l(at + H + i); this.oR[i] = win[i + H] * M.r(at + H + i);
-    }
-    this.prev = at; this.ipos += H * this.speed;
-    M.s = Math.min(M.e, Math.max(M.s, Math.min(at + H, Math.round(this.ipos) - D)));
+    const w = 128 * this.speed + this.carry, k = Math.round(w);
+    while (M.e < this.fed + k) if (!this.mix(256)) return false;
+    this.carry = w - k;
+    const iL = new Float32Array(buf(), ss.ptr, ss.cap), iR = new Float32Array(buf(), ss.ptr + ss.cap * 4, ss.cap);
+    for (let i = 0; i < k; i++) { iL[i] = M.l(this.fed + i); iR[i] = M.r(this.fed + i); }
+    mod._process(k, 128);
+    this.fed += k;
+    const oL = new Float32Array(buf(), ss.ptr + 2 * ss.cap * 4, 128), oR = new Float32Array(buf(), ss.ptr + 3 * ss.cap * 4, 128);
+    for (let i = 0; i < 128; i++) S.push(oL[i], oR[i]);
+    M.s = Math.min(M.e, Math.max(M.s, this.fed - 1024));
     return true;
   }
   process(inputs, outputs) {
+    const t0 = Date.now(), r = this.work(outputs);
+    this.busy += Date.now() - t0;
+    return r;
+  }
+  work(outputs) {
     const o = outputs[0], oL = o[0], oR = o[1] || o[0], n = oL.length, S = this.S;
     if (!this.on) return true;
     const need = Math.ceil(this.fp + n * this.ratio) + 2;
@@ -390,7 +407,13 @@ function listenReady(c) {
   const want = !/[?&]listen=script\b/.test(location.search) && c.audioWorklet && typeof AudioWorkletNode === 'function';
   let p;
   if (!want) p = Promise.resolve('script');
-  else { const u = URL.createObjectURL(new Blob([LISTEN_SRC], { type: 'application/javascript' })); p = c.audioWorklet.addModule(u).then(() => 'worklet', () => 'script').finally(() => URL.revokeObjectURL(u)); }
+  else {
+    // (From version 3.2 Signalsmith Stretch first, beside this page (as Provarium's own player has it from r6.67): the
+    // own player's stretching. Missing, the rest is measured as before.)
+    const u = URL.createObjectURL(new Blob([LISTEN_SRC], { type: 'application/javascript' }));
+    p = c.audioWorklet.addModule(new URL('signalsmith-stretch.js', location.href).href).catch(() => null)
+      .then(() => c.audioWorklet.addModule(u)).then(() => 'worklet', () => 'script').finally(() => URL.revokeObjectURL(u));
+  }
   p = p.then(v => { c.scListen = v; if (c === ctx) LISTEN = v; return v; });
   listenLoads.set(c, p);
   return p;
@@ -542,7 +565,7 @@ async function plain(label, a) {
   a.pause();
   lines.push(label + ' on its own (as Hazır Kayıt): ' + (r === 'ok' ? 'moves ' + ms((firstP - callP) / 1000) + ' after ▶ · its clock steps every ' + ms(med(steps)) : 'play: ' + r));
 }
-// The page's own player (D): eight parts, at speed 1 and 0.75. Its sound never goes through an audio element, so there
+// The page's own player (D): eight parts, at speed 1, 0.75 and (from version 3.2) 0.5. Its sound never goes through an audio element, so there
 // is no other clock to be late against: what matters is whether the decoding keeps up (underruns), gaps and glitches,
 // and how soon it starts. Kept for the second test.
 async function own(f0, f1, bytes) {
@@ -572,9 +595,13 @@ async function own(f0, f1, bytes) {
   await wait(5000);
   const m1 = await mark('speed-1');
   const rateC = ctx.currentTime; node.port.postMessage({ type: 'speed', v: 0.75 });
-  prog(f0 + (f1 - f0) * 0.6);
+  prog(f0 + (f1 - f0) * 0.5);
   await wait(6500);
   const m2 = await mark('speed-075');
+  const halfC = ctx.currentTime; node.port.postMessage({ type: 'speed', v: 0.5 });
+  prog(f0 + (f1 - f0) * 0.75);
+  await wait(5000);
+  const m3 = await mark('speed-05');
   const endC = ctx.currentTime, endP = performance.now();
   node.port.postMessage({ type: 'stop' });
   const ds = await new Promise(ok => { worker.onmessage = e => { if (e.data.type === 'stats') ok(e.data); else if (e.data.type === 'error') errs.push(e.data.message); }; worker.postMessage({ type: 'stats' }); setTimeout(() => ok(null), 2000); });
@@ -586,7 +613,15 @@ async function own(f0, f1, bytes) {
   lines.push('  decoding: ' + (ds && ds.sec && ds.ms ? Math.round(ds.sec / (ds.ms / 1000)) + '× faster than it plays, one part · all 8 at speed 1: ' + (800 * ds.ms / 1000 / ds.sec).toFixed(1) + '% of one core' : 'not measured') + ' · the decoder ready ' + ms(readyMs / 1000) + ' after it was asked');
   lines.push('  ▶ to the first sound: ' + ms(first - callC) + (isFinite(first) ? '' : ' · nothing played · the sound ' + ctx.state + ', its clock ' + pace((endC - callC) / ((endP - callP) / 1000))));
   lines.push('  at speed 1: ' + (m1 ? m1.under : '–') + ' underruns · gaps ' + ms(isFinite(first) ? gaps(low, first + 0.2, rateC - 0.05) : NaN) + ' · glitches ' + (isFinite(first) ? glitches([cap.st.gl[0]], first + 0.3, rateC) : '–'));
-  lines.push('  at speed 0.75: ' + (m1 && m2 ? m2.under - m1.under : '–') + ' underruns · gaps ' + ms(gaps(low, rateC + 0.3, endC - 0.05)) + ' · glitches ' + glitches([cap.st.gl[0]], rateC + 0.3, endC - 0.05));
+  // (How much of the sound's time the mixer took, in each round: its share of the time it had.)
+  const share = (a, b) => a && b && b.t > a.t ? (100 * (b.busy - a.busy) / 1000 / (b.t - a.t)).toFixed(1) + '% of the sound\'s time' : 'not measured';
+  const m0 = { t: callC, busy: 0 };
+  lines.push('  the mixer: ' + share(m0, m1) + ' at speed 1 · ' + share(m1, m2) + ' at 0.75 · ' + share(m2, m3) + ' at 0.5 · the stretcher (Signalsmith Stretch): ' + (m1 ? m1.ss : '–'));
+  if (m1 && m1.ss !== 'ok') lines.push('  at speed 0.75 and 0.5: not measured, the stretcher ' + m1.ss);
+  else {
+    lines.push('  at speed 0.75: ' + (m1 && m2 ? m2.under - m1.under : '–') + ' underruns · gaps ' + ms(gaps(low, rateC + 0.3, halfC - 0.05)) + ' · glitches ' + glitches([cap.st.gl[0]], rateC + 0.3, halfC - 0.05));
+    lines.push('  at speed 0.5: ' + (m2 && m3 ? m3.under - m2.under : '–') + ' underruns · gaps ' + ms(gaps(low, halfC + 0.3, endC - 0.05)) + ' · glitches ' + glitches([cap.st.gl[0]], halfC + 0.3, endC - 0.05));
+  }
   return { worker, node, out, mark, errs };
 }
 const urls = [];
@@ -653,7 +688,7 @@ async function run(resumed, E, st, before) {
     const bytes = st ? await st.arrayBuffer() : null;
     say(W('running'));
     const [mv, mv44] = await Promise.all([moving(ctx), ctx44 ? moving(ctx44) : NaN]);
-    lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC · version 3.1');
+    lines.push('Provarium sound check · ' + new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC · version 3.2');
     lines.push('Device: ' + ($('model').value.trim() || '(not given)') + ' · listening on: ' + $('route').value);
     lines.push('Browser: ' + navigator.userAgent);
     lines.push('Sound: ' + ctx.sampleRate + ' Hz · base ' + ms(ctx.baseLatency) + ' · out ' + ms(ctx.outputLatency) + ' · output timestamps ' + (ctx.getOutputTimestamp ? 'yes' : 'no') + ' · audio session ' + (navigator.audioSession ? navigator.audioSession.type : 'none') + ' · state ' + ctx.state + ', its clock ' + pace(mv) + (ctx44 ? ' (at 44100 Hz: ' + ctx44.state + ', ' + pace(mv44) + ')' : '') + ' · listener ' + LISTEN + ' · screen kept on ' + (awake ? 'yes' : navigator.wakeLock ? 'refused' : 'no'));

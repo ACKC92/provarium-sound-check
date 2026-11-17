@@ -14,7 +14,7 @@ A one-page test for [Provarium](https://provarium.net)'s player. It plays short 
   - the same at speed 0.75.
 - Eight MP3 recordings at once, as a piece in eight parts, at the device's own sound rate and again at 44,100 Hz: gaps and glitches.
 - One "part and rest" recording (stereo, the part on the left, the others on the right), split and mixed again, at speed 1 and 0.75.
-- A player of the page's own: eight parts decoded a few seconds ahead in a worker and mixed by the page, at speed 1 and 0.75 (its own stretching): whether the decoding keeps up, how much of the device it takes, gaps and glitches.
+- A player of the page's own: eight parts decoded a few seconds ahead in a worker and mixed by the page, at speed 1, 0.75 and 0.5 (from version 3.2 stretched by Signalsmith Stretch, as Provarium's own player is): whether the decoding keeps up, how much of the sound's time the mixing and stretching take, gaps and glitches.
 - The second test: the screen locked or another app in front for a few seconds while that player plays. Do the sound, the decoding and the page's timers go on? And back on the page, does the sound go on by itself, or only once it's asked to?
 - Whether the sound's clock is moving, and every change in its state with when it came (from version 3.1). Each run starts with new sounds, after a look at the last run's: had it stopped, and did a tap bring it back?
 
@@ -24,4 +24,5 @@ Nothing is sent anywhere. The page has no analytics and loads nothing but its ow
 ## Files
 - `index.html`: the page.
 - `lame.min.js`: [lamejs](https://github.com/zhuker/lamejs) 1.2.1, to make the MP3 test sounds. LGPL-3.0, a port of [LAME](https://lame.sourceforge.io). See `LICENSE-lamejs.txt` and `LICENSE-LGPL-3.0.txt`.
+- `signalsmith-stretch.js`: [Signalsmith Stretch](https://signalsmith-audio.co.uk/code/stretch/) 1.3.2, the release for the web (npm `signalsmith-stretch`), its library alone with one line added that hands it to the page's own player (from version 3.2). MIT. See `LICENSE-signalsmith-stretch.txt`.
 - `mpg123-decoder.min.js`: [mpg123-decoder](https://www.npmjs.com/package/mpg123-decoder) 1.0.3 from [wasm-audio-decoders](https://github.com/eshaz/wasm-audio-decoders), to decode MP3 for the page's own player. MIT, with [mpg123](https://www.mpg123.de) compiled in, LGPL-2.1. See `LICENSE-mpg123-decoder.txt` and `LICENSE-LGPL-2.1.txt`.
